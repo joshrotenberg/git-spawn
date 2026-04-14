@@ -1,8 +1,9 @@
 //! Integration tests for plumbing commands and typed parsers.
 
 use git_wrapper::{
-    CatFileCommand, ForEachRefCommand, GitCommand, HashObjectCommand, LsFilesCommand,
-    LsTreeCommand, Repository, RevParseCommand, UpdateRefCommand,
+    CatFileCommand, DescribeCommand, ForEachRefCommand, GitCommand, HashObjectCommand,
+    LsFilesCommand, LsTreeCommand, Repository, RevParseCommand, ShowRefCommand, SymbolicRefCommand,
+    UpdateRefCommand,
 };
 
 fn configure_identity(repo: &Repository) {
@@ -133,6 +134,52 @@ async fn update_ref_creates_and_deletes() {
     rm.execute().await.unwrap();
     let out2 = fe.execute().await.unwrap();
     assert!(!out2.stdout.lines().any(|l| l == "shadow"));
+}
+
+#[tokio::test]
+async fn describe_always_returns_sha_when_no_tag() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let mut d = DescribeCommand::new();
+    d.current_dir(repo.path()).always().commit("HEAD");
+    let out = d.execute().await.unwrap();
+    // No tag exists, so --always falls back to an abbreviated SHA (non-empty).
+    assert!(!out.is_empty());
+}
+
+#[tokio::test]
+async fn describe_finds_tag() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    repo.tag().name("v0.1.0").execute().await.unwrap();
+    let mut d = DescribeCommand::new();
+    d.current_dir(repo.path()).tags();
+    let out = d.execute().await.unwrap();
+    assert!(out.starts_with("v0.1.0"), "unexpected describe: {out}");
+}
+
+#[tokio::test]
+async fn show_ref_lists_heads() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let mut s = ShowRefCommand::new();
+    s.current_dir(repo.path()).heads();
+    let out = s.execute().await.unwrap();
+    assert!(out.stdout.contains("refs/heads/main"));
+}
+
+#[tokio::test]
+async fn symbolic_ref_reads_head() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let mut s = SymbolicRefCommand::read("HEAD");
+    s.current_dir(repo.path());
+    let target = s.execute().await.unwrap();
+    assert_eq!(target, "refs/heads/main");
+}
+
+#[tokio::test]
+async fn symbolic_ref_short_returns_branch_name() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let mut s = SymbolicRefCommand::read("HEAD").short();
+    s.current_dir(repo.path());
+    assert_eq!(s.execute().await.unwrap(), "main");
 }
 
 #[cfg(feature = "parse")]
