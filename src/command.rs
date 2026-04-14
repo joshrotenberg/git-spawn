@@ -60,14 +60,18 @@ use tokio::process::Command as TokioCommand;
 use tracing::{debug, error, instrument, trace, warn};
 
 pub mod add;
+pub mod bisect;
 pub mod branch;
 pub mod cat_file;
 pub mod checkout;
+pub mod cherry_pick;
 pub mod clone;
 pub mod commit;
+pub mod config;
 pub mod diff;
 pub mod fetch;
 pub mod for_each_ref;
+pub mod grep;
 pub mod hash_object;
 pub mod init;
 pub mod log;
@@ -78,6 +82,7 @@ pub mod mv;
 pub mod pull;
 pub mod push;
 pub mod rebase;
+pub mod reflog;
 pub mod remote;
 pub mod reset;
 pub mod restore;
@@ -86,9 +91,11 @@ pub mod rm;
 pub mod show;
 pub mod stash;
 pub mod status;
+pub mod submodule;
 pub mod switch;
 pub mod tag;
 pub mod update_ref;
+pub mod worktree;
 
 /// Default timeout applied when none is configured on the executor.
 ///
