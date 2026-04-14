@@ -320,6 +320,53 @@ fn for_each_ref_pattern() {
 }
 
 #[test]
+fn describe_with_tags_and_dirty() {
+    let mut c = DescribeCommand::new();
+    c.tags().long().dirty_mark("-wip").commit("HEAD");
+    assert_eq!(
+        args_of(&c),
+        vec!["describe", "--tags", "--long", "--dirty=-wip", "HEAD"]
+    );
+}
+
+#[test]
+fn show_ref_heads_pattern() {
+    let mut c = ShowRefCommand::new();
+    c.heads().pattern("main");
+    assert_eq!(args_of(&c), vec!["show-ref", "--heads", "main"]);
+}
+
+#[test]
+fn symbolic_ref_read_head() {
+    let c = SymbolicRefCommand::read("HEAD").short();
+    assert_eq!(args_of(&c), vec!["symbolic-ref", "--short", "HEAD"]);
+}
+
+#[test]
+fn symbolic_ref_set_with_reason() {
+    let c = SymbolicRefCommand::set("HEAD", "refs/heads/main").reason("switching branches");
+    assert_eq!(
+        args_of(&c),
+        vec![
+            "symbolic-ref",
+            "-m",
+            "switching branches",
+            "HEAD",
+            "refs/heads/main",
+        ]
+    );
+}
+
+#[test]
+fn symbolic_ref_delete() {
+    let c = SymbolicRefCommand::delete("FETCH_HEAD").quiet();
+    assert_eq!(
+        args_of(&c),
+        vec!["symbolic-ref", "--delete", "-q", "FETCH_HEAD"]
+    );
+}
+
+#[test]
 fn escape_hatch_arg_appends_after_typed_args() {
     // `arg()` goes into the executor's raw_args, which the executor appends
     // after the typed args when spawning. Build only yields the typed args;
