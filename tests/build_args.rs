@@ -262,6 +262,64 @@ fn mv_source_dest() {
 }
 
 #[test]
+fn rev_parse_head_short() {
+    let mut c = RevParseCommand::new();
+    c.short_len(7).arg_str("HEAD");
+    assert_eq!(args_of(&c), vec!["rev-parse", "--short=7", "HEAD"]);
+}
+
+#[test]
+fn ls_files_cached_with_path() {
+    let mut c = LsFilesCommand::new();
+    c.cached().path("src");
+    assert_eq!(args_of(&c), vec!["ls-files", "--cached", "--", "src"]);
+}
+
+#[test]
+fn ls_tree_recurse() {
+    let mut c = LsTreeCommand::new("HEAD");
+    c.recurse().name_only();
+    assert_eq!(args_of(&c), vec!["ls-tree", "-r", "--name-only", "HEAD"]);
+}
+
+#[test]
+fn cat_file_pretty_print() {
+    let c = CatFileCommand::pretty_print("HEAD");
+    assert_eq!(args_of(&c), vec!["cat-file", "-p", "HEAD"]);
+}
+
+#[test]
+fn hash_object_write() {
+    let mut c = HashObjectCommand::new();
+    c.write().path("/tmp/blob");
+    assert_eq!(args_of(&c), vec!["hash-object", "-w", "/tmp/blob"]);
+}
+
+#[test]
+fn update_ref_set() {
+    let mut c = UpdateRefCommand::new();
+    c.ref_name("refs/heads/main").new_value("abc123");
+    assert_eq!(args_of(&c), vec!["update-ref", "refs/heads/main", "abc123"]);
+}
+
+#[test]
+fn update_ref_delete() {
+    let mut c = UpdateRefCommand::new();
+    c.ref_name("refs/heads/gone").delete();
+    assert_eq!(args_of(&c), vec!["update-ref", "-d", "refs/heads/gone"]);
+}
+
+#[test]
+fn for_each_ref_pattern() {
+    let mut c = ForEachRefCommand::new();
+    c.pattern("refs/heads/*").format("%(refname:short)");
+    assert_eq!(
+        args_of(&c),
+        vec!["for-each-ref", "--format=%(refname:short)", "refs/heads/*",]
+    );
+}
+
+#[test]
 fn escape_hatch_arg_appends_after_typed_args() {
     // `arg()` goes into the executor's raw_args, which the executor appends
     // after the typed args when spawning. Build only yields the typed args;

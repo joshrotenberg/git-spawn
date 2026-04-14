@@ -1,10 +1,37 @@
 //! High-level handle for operating on a git repository.
 //!
 //! A [`Repository`] is a cheap, cloneable reference to a working tree path.
-//! It is the entry point for most users: construct one via [`Repository::open`],
-//! [`Repository::init`], or [`Repository::clone`], then call the porcelain
-//! methods defined in submodules of this crate to build commands pre-scoped
-//! to this repo.
+//! It is the entry point for most users: construct one via
+//! [`Repository::open`], [`Repository::init`], or [`Repository::clone`], then
+//! call the accessor methods ([`Repository::add`], [`Repository::commit`],
+//! [`Repository::log`], ...) to build commands pre-scoped to this repo.
+//!
+//! ```no_run
+//! use git_wrapper::{GitCommand, Repository};
+//!
+//! # async fn example() -> git_wrapper::Result<()> {
+//! // Create a fresh repo and commit a file into it.
+//! let repo = Repository::init("/tmp/demo").await?;
+//! std::fs::write(repo.path().join("hello.txt"), "hi")?;
+//! repo.add().path("hello.txt").execute().await?;
+//! repo.commit().message("first").execute().await?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! # Cloning an existing repo
+//!
+//! ```no_run
+//! # use git_wrapper::Repository;
+//! # async fn example() -> git_wrapper::Result<()> {
+//! let repo = Repository::clone(
+//!     "https://github.com/octocat/Hello-World.git",
+//!     "/tmp/hello-world",
+//! ).await?;
+//! assert!(repo.git_dir().exists());
+//! # Ok(())
+//! # }
+//! ```
 
 use crate::command::{
     GitCommand, add::AddCommand, branch::BranchCommand, checkout::CheckoutCommand,

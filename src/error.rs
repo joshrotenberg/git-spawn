@@ -1,7 +1,49 @@
 //! Error types for git-wrapper.
 //!
-//! All commands return [`Result<T, Error>`]. Match on specific variants for
-//! detailed handling.
+//! All commands return [`Result<T, Error>`]. The [`enum@Error`] type is
+//! non-exhaustive in spirit: callers should match the variants they care
+//! about and fall through to a generic arm.
+//!
+//! ```no_run
+//! use git_wrapper::{Error, GitCommand, Repository};
+//!
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! let repo = Repository::open("/path/to/repo")?;
+//! match repo.log().max_count(10).execute().await {
+//!     Ok(out) => println!("{}", out.stdout),
+//!     Err(Error::GitNotFound) => eprintln!("install git first"),
+//!     Err(Error::CommandFailed { stderr, exit_code, .. }) => {
+//!         eprintln!("git failed (exit {exit_code}):\n{stderr}")
+//!     }
+//!     Err(Error::Timeout { timeout_seconds }) => {
+//!         eprintln!("git didn't respond within {timeout_seconds}s")
+//!     }
+//!     Err(e) => eprintln!("unexpected: {e}"),
+//! }
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## When each variant occurs
+//!
+//! - [`Error::GitNotFound`] — the OS reported *file not found* while spawning.
+//!   Install git or check `PATH`.
+//! - [`Error::CommandFailed`] — git exited non-zero. Read `stderr` for the
+//!   user-facing message; keep `stdout` for anything git wrote to the
+//!   fast-path.
+//! - [`Error::Timeout`] — the process exceeded the duration passed to
+//!   [`with_timeout`](crate::GitCommand::with_timeout).
+//! - [`Error::Io`] — OS-level failure unrelated to exit status (e.g. cwd
+//!   doesn't exist, pipe error while reading output).
+//! - [`Error::InvalidConfig`] — a builder was missing a required field
+//!   (for example [`MvCommand`](crate::MvCommand) with no source).
+//! - [`Error::NotARepository`] — [`Repository::open`](crate::Repository::open)
+//!   was called on a path that has no `.git`.
+//! - [`Error::ParseError`] — a parser in [`crate::parse`] could not decode
+//!   the captured output.
+//! - [`Error::UnsupportedVersion`] — reserved for future version gating; not
+//!   currently emitted.
+//! - [`Error::Custom`] — catch-all for cases the library cannot classify.
 
 use thiserror::Error;
 
