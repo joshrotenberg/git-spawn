@@ -6,6 +6,14 @@
 //! methods defined in submodules of this crate to build commands pre-scoped
 //! to this repo.
 
+use crate::command::{
+    GitCommand, add::AddCommand, branch::BranchCommand, checkout::CheckoutCommand,
+    clone::CloneCommand, commit::CommitCommand, diff::DiffCommand, fetch::FetchCommand,
+    init::InitCommand, log::LogCommand, merge::MergeCommand, mv::MvCommand, pull::PullCommand,
+    push::PushCommand, rebase::RebaseCommand, remote::RemoteCommand, reset::ResetCommand,
+    restore::RestoreCommand, rm::RmCommand, show::ShowCommand, stash::StashCommand,
+    status::StatusCommand, switch::SwitchCommand, tag::TagCommand,
+};
 use crate::error::{Error, Result};
 use std::path::{Path, PathBuf};
 
@@ -49,6 +57,196 @@ impl Repository {
     #[must_use]
     pub fn git_dir(&self) -> PathBuf {
         self.path.join(".git")
+    }
+
+    /// Initialize a new repository at `path`.
+    ///
+    /// Equivalent to `git init <path>`. Returns the created [`Repository`].
+    pub async fn init(path: impl Into<PathBuf>) -> Result<Self> {
+        let path = path.into();
+        if let Some(parent) = path.parent() {
+            if !parent.as_os_str().is_empty() && !parent.exists() {
+                std::fs::create_dir_all(parent).map_err(Error::from)?;
+            }
+        }
+        if !path.exists() {
+            std::fs::create_dir_all(&path).map_err(Error::from)?;
+        }
+        InitCommand::in_directory(path).execute().await
+    }
+
+    /// Clone `url` into `path`.
+    pub async fn clone(url: impl Into<String>, path: impl Into<PathBuf>) -> Result<Self> {
+        let mut cmd = CloneCommand::new(url);
+        cmd.directory(path);
+        cmd.execute().await
+    }
+
+    /// Build an [`AddCommand`] scoped to this repository.
+    #[must_use]
+    pub fn add(&self) -> AddCommand {
+        let mut c = AddCommand::new();
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`CommitCommand`] scoped to this repository.
+    #[must_use]
+    pub fn commit(&self) -> CommitCommand {
+        let mut c = CommitCommand::new();
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`StatusCommand`] scoped to this repository.
+    #[must_use]
+    pub fn status(&self) -> StatusCommand {
+        let mut c = StatusCommand::new();
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`LogCommand`] scoped to this repository.
+    #[must_use]
+    pub fn log(&self) -> LogCommand {
+        let mut c = LogCommand::new();
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`DiffCommand`] scoped to this repository.
+    #[must_use]
+    pub fn diff(&self) -> DiffCommand {
+        let mut c = DiffCommand::new();
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`ShowCommand`] scoped to this repository.
+    #[must_use]
+    pub fn show(&self) -> ShowCommand {
+        let mut c = ShowCommand::new();
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`BranchCommand`] scoped to this repository.
+    #[must_use]
+    pub fn branch(&self) -> BranchCommand {
+        let mut c = BranchCommand::new();
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`CheckoutCommand`] scoped to this repository.
+    #[must_use]
+    pub fn checkout(&self) -> CheckoutCommand {
+        let mut c = CheckoutCommand::new();
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`SwitchCommand`] scoped to this repository.
+    #[must_use]
+    pub fn switch(&self) -> SwitchCommand {
+        let mut c = SwitchCommand::new();
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`MergeCommand`] scoped to this repository.
+    #[must_use]
+    pub fn merge(&self) -> MergeCommand {
+        let mut c = MergeCommand::new();
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`RebaseCommand`] scoped to this repository.
+    #[must_use]
+    pub fn rebase(&self) -> RebaseCommand {
+        let mut c = RebaseCommand::new();
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`PullCommand`] scoped to this repository.
+    #[must_use]
+    pub fn pull(&self) -> PullCommand {
+        let mut c = PullCommand::new();
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`PushCommand`] scoped to this repository.
+    #[must_use]
+    pub fn push(&self) -> PushCommand {
+        let mut c = PushCommand::new();
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`FetchCommand`] scoped to this repository.
+    #[must_use]
+    pub fn fetch(&self) -> FetchCommand {
+        let mut c = FetchCommand::new();
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`RemoteCommand`] scoped to this repository.
+    #[must_use]
+    pub fn remote(&self, action: RemoteCommand) -> RemoteCommand {
+        let mut c = action;
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`TagCommand`] scoped to this repository.
+    #[must_use]
+    pub fn tag(&self) -> TagCommand {
+        let mut c = TagCommand::new();
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`StashCommand`] scoped to this repository.
+    #[must_use]
+    pub fn stash(&self, action: StashCommand) -> StashCommand {
+        let mut c = action;
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`ResetCommand`] scoped to this repository.
+    #[must_use]
+    pub fn reset(&self) -> ResetCommand {
+        let mut c = ResetCommand::new();
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`RestoreCommand`] scoped to this repository.
+    #[must_use]
+    pub fn restore(&self) -> RestoreCommand {
+        let mut c = RestoreCommand::new();
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build an [`RmCommand`] scoped to this repository.
+    #[must_use]
+    pub fn rm(&self) -> RmCommand {
+        let mut c = RmCommand::new();
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build an [`MvCommand`] scoped to this repository.
+    pub fn mv(&self, src: impl Into<String>, dst: impl Into<String>) -> MvCommand {
+        let mut c = MvCommand::new(src, dst);
+        c.current_dir(&self.path);
+        c
     }
 }
 
