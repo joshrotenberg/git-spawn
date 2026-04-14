@@ -34,12 +34,14 @@
 //! ```
 
 use crate::command::{
-    GitCommand, add::AddCommand, branch::BranchCommand, checkout::CheckoutCommand,
-    clone::CloneCommand, commit::CommitCommand, diff::DiffCommand, fetch::FetchCommand,
-    init::InitCommand, log::LogCommand, merge::MergeCommand, mv::MvCommand, pull::PullCommand,
-    push::PushCommand, rebase::RebaseCommand, remote::RemoteCommand, reset::ResetCommand,
-    restore::RestoreCommand, rm::RmCommand, show::ShowCommand, stash::StashCommand,
-    status::StatusCommand, switch::SwitchCommand, tag::TagCommand,
+    GitCommand, add::AddCommand, bisect::BisectCommand, branch::BranchCommand,
+    checkout::CheckoutCommand, cherry_pick::CherryPickCommand, clone::CloneCommand,
+    commit::CommitCommand, config::ConfigCommand, diff::DiffCommand, fetch::FetchCommand,
+    grep::GrepCommand, init::InitCommand, log::LogCommand, merge::MergeCommand, mv::MvCommand,
+    pull::PullCommand, push::PushCommand, rebase::RebaseCommand, reflog::ReflogCommand,
+    remote::RemoteCommand, reset::ResetCommand, restore::RestoreCommand, rm::RmCommand,
+    show::ShowCommand, stash::StashCommand, status::StatusCommand, submodule::SubmoduleCommand,
+    switch::SwitchCommand, tag::TagCommand, worktree::WorktreeCommand,
 };
 use crate::error::{Error, Result};
 use std::path::{Path, PathBuf};
@@ -272,6 +274,61 @@ impl Repository {
     /// Build an [`MvCommand`] scoped to this repository.
     pub fn mv(&self, src: impl Into<String>, dst: impl Into<String>) -> MvCommand {
         let mut c = MvCommand::new(src, dst);
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`CherryPickCommand`] scoped to this repository.
+    #[must_use]
+    pub fn cherry_pick(&self) -> CherryPickCommand {
+        let mut c = CherryPickCommand::new();
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`GrepCommand`] scoped to this repository with the given pattern.
+    pub fn grep(&self, pattern: impl Into<String>) -> GrepCommand {
+        let mut c = GrepCommand::new(pattern);
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`ConfigCommand`] scoped to this repository.
+    #[must_use]
+    pub fn config(&self, action: ConfigCommand) -> ConfigCommand {
+        let mut c = action;
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`ReflogCommand`] scoped to this repository.
+    #[must_use]
+    pub fn reflog(&self, action: ReflogCommand) -> ReflogCommand {
+        let mut c = action;
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`WorktreeCommand`] scoped to this repository.
+    #[must_use]
+    pub fn worktree(&self, action: WorktreeCommand) -> WorktreeCommand {
+        let mut c = action;
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`SubmoduleCommand`] scoped to this repository.
+    #[must_use]
+    pub fn submodule(&self, action: SubmoduleCommand) -> SubmoduleCommand {
+        let mut c = action;
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`BisectCommand`] scoped to this repository.
+    #[must_use]
+    pub fn bisect(&self, action: BisectCommand) -> BisectCommand {
+        let mut c = action;
         c.current_dir(&self.path);
         c
     }
