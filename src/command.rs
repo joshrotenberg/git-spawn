@@ -22,6 +22,30 @@ use std::time::Duration;
 use tokio::process::Command as TokioCommand;
 use tracing::{debug, error, instrument, trace, warn};
 
+pub mod add;
+pub mod branch;
+pub mod checkout;
+pub mod clone;
+pub mod commit;
+pub mod diff;
+pub mod fetch;
+pub mod init;
+pub mod log;
+pub mod merge;
+pub mod mv;
+pub mod pull;
+pub mod push;
+pub mod rebase;
+pub mod remote;
+pub mod reset;
+pub mod restore;
+pub mod rm;
+pub mod show;
+pub mod stash;
+pub mod status;
+pub mod switch;
+pub mod tag;
+
 /// Default timeout applied when none is configured on the executor.
 ///
 /// Set to `None` by default — callers opt in to timeouts explicitly.

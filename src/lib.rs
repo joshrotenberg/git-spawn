@@ -32,6 +32,13 @@ pub mod command;
 pub mod error;
 pub mod repo;
 
-pub use command::{CommandExecutor, CommandOutput, GitCommand};
+pub use command::{
+    CommandExecutor, CommandOutput, GitCommand, add::AddCommand, branch::BranchCommand,
+    checkout::CheckoutCommand, clone::CloneCommand, commit::CommitCommand, diff::DiffCommand,
+    fetch::FetchCommand, init::InitCommand, log::LogCommand, merge::MergeCommand, mv::MvCommand,
+    pull::PullCommand, push::PushCommand, rebase::RebaseCommand, remote::RemoteCommand,
+    reset::ResetCommand, restore::RestoreCommand, rm::RmCommand, show::ShowCommand,
+    stash::StashCommand, status::StatusCommand, switch::SwitchCommand, tag::TagCommand,
+};
 pub use error::{Error, Result};
 pub use repo::Repository;
