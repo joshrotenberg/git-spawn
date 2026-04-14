@@ -4,10 +4,13 @@ use git_wrapper::{GitCommand, Repository};
 
 fn configure_identity(repo: &Repository) {
     // Configure a local identity so commits work in CI / clean envs.
+    // `core.autocrlf=false` keeps Windows from rewriting `\n` to `\r\n` on
+    // checkout, which would break byte-for-byte content assertions.
     for (k, v) in [
         ("user.email", "test@example.com"),
         ("user.name", "Test"),
         ("commit.gpgsign", "false"),
+        ("core.autocrlf", "false"),
     ] {
         let status = std::process::Command::new("git")
             .args(["config", "--local", k, v])
