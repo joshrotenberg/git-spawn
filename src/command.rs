@@ -3,14 +3,51 @@
 //! Every git subcommand wrapper is a struct that implements [`GitCommand`].
 //! The trait gives each command:
 //!
-//! - `execute()` — run the command and return a typed output
-//! - `arg()` / `args()` — append raw CLI arguments (escape hatch)
-//! - `with_timeout()` — cap execution time
-//! - `current_dir()` / `env()` — control the subprocess environment
+//! - [`execute()`](GitCommand::execute) — run and return a typed output
+//! - [`arg()`](GitCommand::arg) / [`args()`](GitCommand::args) — append raw
+//!   CLI arguments (escape hatch)
+//! - [`with_timeout()`](GitCommand::with_timeout) — cap execution time
+//! - [`current_dir()`](GitCommand::current_dir) / [`env()`](GitCommand::env) —
+//!   control the subprocess environment
 //!
 //! Under the hood, each command delegates to a shared [`CommandExecutor`] that
 //! spawns `git` via [`tokio::process::Command`], captures stdout/stderr, and
 //! maps non-zero exits to [`Error::CommandFailed`].
+//!
+//! # The two-tier output model
+//!
+//! Commands with unstructured output — porcelain that varies by git version,
+//! locale, and config — return [`CommandOutput`]. Callers can treat stdout as
+//! bytes or pass it through a parser in [`crate::parse`].
+//!
+//! Commands whose output is stable enough to decode return typed values
+//! directly. Examples:
+//!
+//! - [`InitCommand`](init::InitCommand) and [`CloneCommand`](clone::CloneCommand)
+//!   return [`Repository`](crate::Repository).
+//! - [`RevParseCommand`](rev_parse::RevParseCommand) returns a trimmed
+//!   [`String`] (typically a SHA or a boolean-ish literal).
+//! - [`CatFileCommand`](cat_file::CatFileCommand) returns the object body as
+//!   a [`String`].
+//! - [`HashObjectCommand`](hash_object::HashObjectCommand) returns the computed
+//!   SHA.
+//!
+//! # Escape hatches
+//!
+//! Every command supports [`arg`](GitCommand::arg), [`args`](GitCommand::args),
+//! [`flag`](GitCommand::flag), and [`option`](GitCommand::option). Raw args are
+//! appended **after** the command's typed flags, so they compose naturally:
+//!
+//! ```no_run
+//! # async fn ex() -> git_wrapper::Result<()> {
+//! # use git_wrapper::{GitCommand, Repository};
+//! let repo = Repository::open("/repo")?;
+//! // `--shortstat` isn't on DiffCommand yet — fine, append it raw:
+//! let out = repo.diff().cached().arg("--shortstat").execute().await?;
+//! println!("{}", out.stdout);
+//! # Ok(())
+//! # }
+//! ```
 
 use crate::error::{Error, Result};
 use async_trait::async_trait;
@@ -24,13 +61,18 @@ use tracing::{debug, error, instrument, trace, warn};
 
 pub mod add;
 pub mod branch;
+pub mod cat_file;
 pub mod checkout;
 pub mod clone;
 pub mod commit;
 pub mod diff;
 pub mod fetch;
+pub mod for_each_ref;
+pub mod hash_object;
 pub mod init;
 pub mod log;
+pub mod ls_files;
+pub mod ls_tree;
 pub mod merge;
 pub mod mv;
 pub mod pull;
@@ -39,12 +81,14 @@ pub mod rebase;
 pub mod remote;
 pub mod reset;
 pub mod restore;
+pub mod rev_parse;
 pub mod rm;
 pub mod show;
 pub mod stash;
 pub mod status;
 pub mod switch;
 pub mod tag;
+pub mod update_ref;
 
 /// Default timeout applied when none is configured on the executor.
 ///
