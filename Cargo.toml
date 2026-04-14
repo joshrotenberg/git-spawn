@@ -6,6 +6,7 @@ rust-version = "1.85.0"
 authors = ["Josh Rotenberg <joshrotenberg@gmail.com>"]
 description = "A Git CLI wrapper for Rust"
 license = "MIT OR Apache-2.0"
+readme = "README.md"
 repository = "https://github.com/joshrotenberg/git-wrapper"
 homepage = "https://github.com/joshrotenberg/git-wrapper"
 documentation = "https://docs.rs/git-wrapper"
