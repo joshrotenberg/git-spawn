@@ -6,9 +6,9 @@
 //! returns stdout trimmed as [`String`] so callers can parse as needed.
 //!
 //! ```no_run
-//! use git_wrapper::{GitCommand, RevParseCommand};
+//! use git_spawn::{GitCommand, RevParseCommand};
 //!
-//! # async fn example() -> git_wrapper::Result<()> {
+//! # async fn example() -> git_spawn::Result<()> {
 //! let mut cmd = RevParseCommand::new();
 //! cmd.arg_str("HEAD").current_dir("/some/repo");
 //! let sha = cmd.execute().await?;

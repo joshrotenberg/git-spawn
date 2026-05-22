@@ -39,8 +39,8 @@
 //! appended **after** the command's typed flags, so they compose naturally:
 //!
 //! ```no_run
-//! # async fn ex() -> git_wrapper::Result<()> {
-//! # use git_wrapper::{GitCommand, Repository};
+//! # async fn ex() -> git_spawn::Result<()> {
+//! # use git_spawn::{GitCommand, Repository};
 //! let repo = Repository::open("/repo")?;
 //! // `--shortstat` isn't on DiffCommand yet — fine, append it raw:
 //! let out = repo.diff().cached().arg("--shortstat").execute().await?;

@@ -1,7 +1,7 @@
 //! Pure argv assertions for advanced commands.
 
-use git_wrapper::command::config::ConfigScope;
-use git_wrapper::*;
+use git_spawn::command::config::ConfigScope;
+use git_spawn::*;
 
 fn args_of<C: GitCommand>(c: &C) -> Vec<String> {
     c.build_command_args()

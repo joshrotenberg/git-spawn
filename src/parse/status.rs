@@ -73,7 +73,7 @@ impl From<char> for StatusKind {
 ///
 /// # Example
 /// ```
-/// use git_wrapper::parse::{parse_status, StatusKind};
+/// use git_spawn::parse::{parse_status, StatusKind};
 /// // Three entries: modified index+worktree, added, untracked.
 /// let input = "MM a.txt\0A  b.txt\0?? c.txt\0";
 /// let entries = parse_status(input).unwrap();

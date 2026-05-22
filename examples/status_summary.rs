@@ -7,9 +7,9 @@
 //! cargo run --example status_summary -- /path/to/repo
 //! ```
 
-use git_wrapper::command::status::StatusFormat;
-use git_wrapper::parse::{StatusKind, parse_status};
-use git_wrapper::{GitCommand, Repository};
+use git_spawn::command::status::StatusFormat;
+use git_spawn::parse::{StatusKind, parse_status};
+use git_spawn::{GitCommand, Repository};
 use std::collections::BTreeMap;
 
 #[tokio::main]

@@ -3,9 +3,9 @@
 //! Reached through [`Repository::tags`], which returns a [`TagOps`] handle:
 //!
 //! ```no_run
-//! # async fn ex() -> git_wrapper::Result<()> {
-//! use git_wrapper::Repository;
-//! use git_wrapper::tags::TagKind;
+//! # async fn ex() -> git_spawn::Result<()> {
+//! use git_spawn::Repository;
+//! use git_spawn::tags::TagKind;
 //!
 //! let repo = Repository::open("/path/to/repo")?;
 //!

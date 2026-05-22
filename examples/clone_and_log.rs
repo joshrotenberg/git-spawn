@@ -4,8 +4,8 @@
 //! cargo run --example clone_and_log -- https://github.com/octocat/Hello-World.git 10
 //! ```
 
-use git_wrapper::parse::{LOG_FORMAT, parse_log};
-use git_wrapper::{GitCommand, Repository};
+use git_spawn::parse::{LOG_FORMAT, parse_log};
+use git_spawn::{GitCommand, Repository};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

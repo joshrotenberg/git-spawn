@@ -1,4 +1,4 @@
-//! # git-wrapper
+//! # git-spawn
 //!
 //! A Rust wrapper around the `git` CLI. Each git subcommand is a struct with a
 //! builder-style API; calling [`.execute().await`](GitCommand::execute) spawns
@@ -20,9 +20,9 @@
 //! ## Quick start
 //!
 //! ```no_run
-//! use git_wrapper::{GitCommand, Repository};
+//! use git_spawn::{GitCommand, Repository};
 //!
-//! # async fn example() -> git_wrapper::Result<()> {
+//! # async fn example() -> git_spawn::Result<()> {
 //! let repo = Repository::open("/path/to/repo")?;
 //!
 //! // Stage everything and commit.
@@ -55,11 +55,11 @@
 //! `.current_dir()` explicitly:
 //!
 //! ```no_run
-//! # async fn ex() -> git_wrapper::Result<()> {
-//! # use git_wrapper::{GitCommand, Repository};
+//! # async fn ex() -> git_spawn::Result<()> {
+//! # use git_spawn::{GitCommand, Repository};
 //! let repo = Repository::open("/path/to/repo")?;
 //! let status = repo.status().format(
-//!     git_wrapper::command::status::StatusFormat::PorcelainV2
+//!     git_spawn::command::status::StatusFormat::PorcelainV2
 //! ).execute().await?;
 //! println!("{}", status.stdout);
 //! # Ok(())
@@ -73,10 +73,10 @@
 //! types behind the `parse` feature (on by default):
 //!
 //! ```no_run
-//! # async fn ex() -> git_wrapper::Result<()> {
-//! # use git_wrapper::{GitCommand, Repository};
-//! use git_wrapper::command::status::StatusFormat;
-//! use git_wrapper::parse::{parse_status, StatusKind};
+//! # async fn ex() -> git_spawn::Result<()> {
+//! # use git_spawn::{GitCommand, Repository};
+//! use git_spawn::command::status::StatusFormat;
+//! use git_spawn::parse::{parse_status, StatusKind};
 //!
 //! let repo = Repository::open("/path/to/repo")?;
 //! let out = repo.status()

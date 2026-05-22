@@ -1,12 +1,12 @@
 //! Pure argv assertions: verifies each command builds the right argument vector
 //! without spawning `git`.
 
-use git_wrapper::command::{
+use git_spawn::command::{
     reset::ResetMode,
     stash::{StashAction, StashCommand},
     status::StatusFormat,
 };
-use git_wrapper::*;
+use git_spawn::*;
 
 fn args_of<C: GitCommand>(c: &C) -> Vec<String> {
     c.build_command_args()

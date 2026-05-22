@@ -1,11 +1,11 @@
-//! Error types for git-wrapper.
+//! Error types for git-spawn.
 //!
 //! All commands return [`Result<T, Error>`]. The [`enum@Error`] type is
 //! non-exhaustive in spirit: callers should match the variants they care
 //! about and fall through to a generic arm.
 //!
 //! ```no_run
-//! use git_wrapper::{Error, GitCommand, Repository};
+//! use git_spawn::{Error, GitCommand, Repository};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let repo = Repository::open("/path/to/repo")?;
@@ -47,10 +47,10 @@
 
 use thiserror::Error;
 
-/// Result type for git-wrapper operations.
+/// Result type for git-spawn operations.
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Main error type for all git-wrapper operations.
+/// Main error type for all git-spawn operations.
 #[derive(Error, Debug)]
 pub enum Error {
     /// Git binary not found in PATH.

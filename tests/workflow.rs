@@ -3,7 +3,7 @@
 
 #![cfg(feature = "workflow")]
 
-use git_wrapper::{GitCommand, Repository};
+use git_spawn::{GitCommand, Repository};
 
 fn configure_identity(repo: &Repository) {
     for (k, v) in [
@@ -24,7 +24,7 @@ fn configure_identity(repo: &Repository) {
 async fn make_repo() -> (tempfile::TempDir, Repository) {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("repo");
-    let mut init = git_wrapper::InitCommand::in_directory(&path);
+    let mut init = git_spawn::InitCommand::in_directory(&path);
     init.initial_branch("main").quiet();
     std::fs::create_dir_all(&path).unwrap();
     let repo = init.execute().await.expect("init");
@@ -241,7 +241,7 @@ async fn branches_rename_changes_name() {
 
 #[tokio::test]
 async fn tags_create_and_list_lightweight() {
-    use git_wrapper::tags::TagKind;
+    use git_spawn::tags::TagKind;
 
     let (_tmp, repo) = make_repo().await;
     make_initial_commit(&repo).await;
@@ -260,7 +260,7 @@ async fn tags_create_and_list_lightweight() {
 
 #[tokio::test]
 async fn tags_create_annotated_populates_message_and_tagger() {
-    use git_wrapper::tags::TagKind;
+    use git_spawn::tags::TagKind;
 
     let (_tmp, repo) = make_repo().await;
     make_initial_commit(&repo).await;
