@@ -2,7 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/git-spawn.svg)](https://crates.io/crates/git-spawn)
 [![Docs.rs](https://docs.rs/git-spawn/badge.svg)](https://docs.rs/git-spawn)
-[![CI](https://github.com/joshrotenberg/git-wrapper/actions/workflows/ci.yml/badge.svg)](https://github.com/joshrotenberg/git-wrapper/actions/workflows/ci.yml)
+[![CI](https://github.com/joshrotenberg/git-spawn/actions/workflows/ci.yml/badge.svg)](https://github.com/joshrotenberg/git-spawn/actions/workflows/ci.yml)
 [![License](https://img.shields.io/crates/l/git-spawn.svg)](#license)
 
 An async Rust wrapper around the `git` CLI. Each git subcommand is a
