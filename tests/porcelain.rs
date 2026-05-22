@@ -1,6 +1,6 @@
 //! Integration tests driving real `git` in temp directories.
 
-use git_wrapper::{GitCommand, Repository};
+use git_spawn::{GitCommand, Repository};
 
 fn configure_identity(repo: &Repository) {
     // Configure a local identity so commits work in CI / clean envs.
@@ -24,7 +24,7 @@ fn configure_identity(repo: &Repository) {
 async fn make_repo() -> (tempfile::TempDir, Repository) {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("repo");
-    let mut init = git_wrapper::InitCommand::in_directory(&path);
+    let mut init = git_spawn::InitCommand::in_directory(&path);
     init.initial_branch("main").quiet();
     std::fs::create_dir_all(&path).unwrap();
     let repo = init.execute().await.expect("init");
@@ -64,7 +64,7 @@ async fn status_short_after_write() {
     std::fs::write(repo.path().join("a.txt"), "a").unwrap();
     let out = repo
         .status()
-        .format(git_wrapper::command::status::StatusFormat::Short)
+        .format(git_spawn::command::status::StatusFormat::Short)
         .execute()
         .await
         .unwrap();
@@ -76,7 +76,7 @@ async fn log_empty_repo_is_error() {
     let (_tmp, repo) = make_repo().await;
     // No commits yet -> `git log` fails.
     let err = repo.log().execute().await.unwrap_err();
-    assert!(matches!(err, git_wrapper::Error::CommandFailed { .. }));
+    assert!(matches!(err, git_spawn::Error::CommandFailed { .. }));
 }
 
 #[tokio::test]
@@ -188,7 +188,7 @@ async fn reset_hard_reverts_working_tree() {
     std::fs::write(repo.path().join("f"), "two\n").unwrap();
 
     repo.reset()
-        .mode(git_wrapper::command::reset::ResetMode::Hard)
+        .mode(git_spawn::command::reset::ResetMode::Hard)
         .commit("HEAD")
         .execute()
         .await
@@ -222,7 +222,7 @@ async fn rm_cached_keeps_file() {
     // But is no longer tracked.
     let out = repo
         .status()
-        .format(git_wrapper::command::status::StatusFormat::Short)
+        .format(git_spawn::command::status::StatusFormat::Short)
         .execute()
         .await
         .unwrap();
@@ -245,14 +245,14 @@ async fn stash_push_and_pop() {
     commit_one(&repo, "f", "one\n", "init").await;
     std::fs::write(repo.path().join("f"), "two\n").unwrap();
 
-    repo.stash(git_wrapper::StashCommand::push().message("wip"))
+    repo.stash(git_spawn::StashCommand::push().message("wip"))
         .execute()
         .await
         .unwrap();
     let content = std::fs::read_to_string(repo.path().join("f")).unwrap();
     assert_eq!(content, "one\n", "stash should have reset working tree");
 
-    repo.stash(git_wrapper::StashCommand::pop(None))
+    repo.stash(git_spawn::StashCommand::pop(None))
         .execute()
         .await
         .unwrap();
@@ -263,7 +263,7 @@ async fn stash_push_and_pop() {
 #[tokio::test]
 async fn remote_add_and_list() {
     let (_tmp, repo) = make_repo().await;
-    repo.remote(git_wrapper::RemoteCommand::add(
+    repo.remote(git_spawn::RemoteCommand::add(
         "upstream",
         "https://example.com/repo.git",
     ))
@@ -272,7 +272,7 @@ async fn remote_add_and_list() {
     .unwrap();
 
     let out = repo
-        .remote(git_wrapper::RemoteCommand::list_verbose())
+        .remote(git_spawn::RemoteCommand::list_verbose())
         .execute()
         .await
         .unwrap();
@@ -287,21 +287,21 @@ async fn push_pull_via_local_remote() {
     // Bare "remote" repo.
     let bare_path = tmp.path().join("remote.git");
     std::fs::create_dir_all(&bare_path).unwrap();
-    let mut init = git_wrapper::InitCommand::in_directory(&bare_path);
+    let mut init = git_spawn::InitCommand::in_directory(&bare_path);
     init.bare().initial_branch("main").quiet();
     init.execute().await.unwrap();
 
     // Working copy A.
     let a_path = tmp.path().join("a");
     std::fs::create_dir_all(&a_path).unwrap();
-    let mut init_a = git_wrapper::InitCommand::in_directory(&a_path);
+    let mut init_a = git_spawn::InitCommand::in_directory(&a_path);
     init_a.initial_branch("main").quiet();
     let repo_a = init_a.execute().await.unwrap();
     configure_identity(&repo_a);
     commit_one(&repo_a, "hello", "hi\n", "init").await;
 
     repo_a
-        .remote(git_wrapper::RemoteCommand::add(
+        .remote(git_spawn::RemoteCommand::add(
             "origin",
             bare_path.display().to_string(),
         ))
@@ -360,8 +360,8 @@ async fn timeout_triggers_error() {
         .with_timeout(Duration::from_millis(50));
     let err = cmd.execute().await.unwrap_err();
     assert!(
-        matches!(err, git_wrapper::Error::Timeout { .. })
-            || matches!(err, git_wrapper::Error::CommandFailed { .. }),
+        matches!(err, git_spawn::Error::Timeout { .. })
+            || matches!(err, git_spawn::Error::CommandFailed { .. }),
         "unexpected error: {err:?}"
     );
 }

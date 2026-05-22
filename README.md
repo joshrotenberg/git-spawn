@@ -1,19 +1,19 @@
-# git-wrapper
+# git-spawn
 
-[![Crates.io](https://img.shields.io/crates/v/git-wrapper.svg)](https://crates.io/crates/git-wrapper)
-[![Docs.rs](https://docs.rs/git-wrapper/badge.svg)](https://docs.rs/git-wrapper)
+[![Crates.io](https://img.shields.io/crates/v/git-spawn.svg)](https://crates.io/crates/git-spawn)
+[![Docs.rs](https://docs.rs/git-spawn/badge.svg)](https://docs.rs/git-spawn)
 [![CI](https://github.com/joshrotenberg/git-wrapper/actions/workflows/ci.yml/badge.svg)](https://github.com/joshrotenberg/git-wrapper/actions/workflows/ci.yml)
-[![License](https://img.shields.io/crates/l/git-wrapper.svg)](#license)
+[![License](https://img.shields.io/crates/l/git-spawn.svg)](#license)
 
 An async Rust wrapper around the `git` CLI. Each git subcommand is a
 builder-style struct; `.execute().await` spawns `git` as a subprocess and
 returns typed output.
 
 ```rust
-use git_wrapper::{GitCommand, Repository};
+use git_spawn::{GitCommand, Repository};
 
 #[tokio::main]
-async fn main() -> git_wrapper::Result<()> {
+async fn main() -> git_spawn::Result<()> {
     let repo = Repository::open("/path/to/repo")?;
 
     repo.add().all().execute().await?;
@@ -28,7 +28,7 @@ async fn main() -> git_wrapper::Result<()> {
 
 ```toml
 [dependencies]
-git-wrapper = "0.1"
+git-spawn = "0.1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
@@ -45,6 +45,11 @@ MSRV: **1.85** (Rust 2024 edition).
 - **Typed parsers** (behind the `parse` feature, on by default) for
   `status --porcelain=v1 -z`, `log` with a fixed token format, and
   `diff --name-status -z`
+- **Higher-level workflow helpers** (behind the `workflow` feature, off by
+  default) — `repo.info()`, `repo.branches()`, `repo.tags()`,
+  `repo.history()`, and `repo.workflow()` for one-call repo state, typed
+  branch / tag / commit listings, and common compositions like
+  `feature_branch`, `commit_all`, `sync`, `squash_merge`
 - **Escape hatches** on every command (`.arg`, `.args`, `.flag`, `.option`)
   so flags the typed API hasn't surfaced are still reachable
 
@@ -55,11 +60,11 @@ building, not which is "best."
 
 | Project       | What it is                                            | You need `git` installed | Async-native | Honors local `git` config, hooks, credential helpers |
 |---------------|-------------------------------------------------------|:------------------------:|:------------:|:----------------------------------------------------:|
-| `git-wrapper` | Async subprocess wrapper around the `git` CLI         |           yes            |     yes      |                         yes                          |
+| `git-spawn` | Async subprocess wrapper around the `git` CLI         |           yes            |     yes      |                         yes                          |
 | `git2`        | Rust bindings to [libgit2](https://libgit2.org) (C)   |            no            |      no      |                       partial                        |
 | `gix`         | Pure-Rust ([gitoxide](https://github.com/GitoxideLabs/gitoxide)) |            no            |     some     |                       partial                        |
 
-### When to reach for `git-wrapper`
+### When to reach for `git-spawn`
 
 - You're automating **workflows a human would script in bash**: commits,
   pushes, rebases, cherry-picks, worktree setup, release tagging.
@@ -117,7 +122,7 @@ Trade-offs:
 ### Quick decision guide
 
 - "I'm calling `git push` / `git rebase` / `git clone` on behalf of a user."
-  -> `git-wrapper`.
+  -> `git-spawn`.
 - "I'm walking commit history to generate a report, or reading blobs, and
   I can't require `git` to be installed."
   -> `git2` if you need maturity and don't mind C; `gix` if you want pure Rust.
@@ -125,16 +130,16 @@ Trade-offs:
   -> `gix`.
 - "I want to let a user pick a commit and cherry-pick it onto another
   branch, respecting their hooks."
-  -> `git-wrapper`.
+  -> `git-spawn`.
 
 ## Usage
 
 ### Repository handle
 
 ```rust
-use git_wrapper::{GitCommand, Repository};
+use git_spawn::{GitCommand, Repository};
 
-async fn demo() -> git_wrapper::Result<()> {
+async fn demo() -> git_spawn::Result<()> {
     // Open an existing repo (cheap, no process spawn).
     let repo = Repository::open("/path/to/repo")?;
 
@@ -158,11 +163,11 @@ working directory.
 ### Typed parsers
 
 ```rust
-use git_wrapper::{GitCommand, Repository};
-use git_wrapper::command::status::StatusFormat;
-use git_wrapper::parse::{parse_status, StatusKind};
+use git_spawn::{GitCommand, Repository};
+use git_spawn::command::status::StatusFormat;
+use git_spawn::parse::{parse_status, StatusKind};
 
-async fn modified_paths() -> git_wrapper::Result<()> {
+async fn modified_paths() -> git_spawn::Result<()> {
     let repo = Repository::open("/path/to/repo")?;
     let out = repo.status()
         .format(StatusFormat::PorcelainV1)
@@ -183,15 +188,54 @@ The `parse` feature (on by default) also provides `parse_log` (paired with
 `LOG_FORMAT`) and `parse_diff_name_status`. Enable the `serde` feature to get
 `Serialize` / `Deserialize` on the parsed types.
 
+### Workflow helpers (opt-in)
+
+Enable the `workflow` feature for one-call repo state, typed listings, and
+common compositions:
+
+```toml
+[dependencies]
+git-spawn = { version = "0.1", features = ["workflow"] }
+```
+
+```rust
+use git_spawn::Repository;
+
+async fn quick_status() -> git_spawn::Result<()> {
+    let repo = Repository::open("/repo")?;
+
+    let info = repo.info().await?;
+    println!("{} (dirty: {}, ahead {} / behind {})",
+        info.branch.as_deref().unwrap_or("(detached)"),
+        info.dirty, info.ahead, info.behind);
+
+    for b in repo.branches().list().await? {
+        println!("  {}{}", if b.current { "* " } else { "  " }, b.name);
+    }
+
+    for c in repo.history().max_count(5).execute().await? {
+        println!("  {} {}", c.short_sha, c.subject);
+    }
+
+    // Multi-step shortcuts.
+    repo.workflow().feature_branch("feature/x", "main").await?;
+    repo.workflow().commit_all("wip").await?;
+    Ok(())
+}
+```
+
+See the module docs for `info`, `branches`, `tags`, `history`, and `workflow`
+for the full surface.
+
 ### Escape hatches
 
 Every command supports `.arg`, `.args`, `.flag`, and `.option` for flags that
 don't yet have a typed builder method:
 
 ```rust
-use git_wrapper::{GitCommand, Repository};
+use git_spawn::{GitCommand, Repository};
 
-async fn shortstat() -> git_wrapper::Result<()> {
+async fn shortstat() -> git_spawn::Result<()> {
     let repo = Repository::open("/repo")?;
     // `--shortstat` isn't a typed method on DiffCommand, but this still works:
     let out = repo.diff().cached().arg("--shortstat").execute().await?;
@@ -204,9 +248,9 @@ async fn shortstat() -> git_wrapper::Result<()> {
 
 ```rust
 use std::time::Duration;
-use git_wrapper::{GitCommand, Repository};
+use git_spawn::{GitCommand, Repository};
 
-async fn careful_fetch() -> git_wrapper::Result<()> {
+async fn careful_fetch() -> git_spawn::Result<()> {
     let repo = Repository::open("/repo")?;
     let mut cmd = repo.fetch();
     cmd.remote("origin")
@@ -219,10 +263,11 @@ async fn careful_fetch() -> git_wrapper::Result<()> {
 
 ## Feature flags
 
-| Flag    | Default | Purpose                                       |
-|---------|:-------:|-----------------------------------------------|
-| `parse` |   on    | Typed parsers for status / log / diff output  |
-| `serde` |   off   | `Serialize` / `Deserialize` on parsed types   |
+| Flag       | Default | Purpose                                                                |
+|------------|:-------:|------------------------------------------------------------------------|
+| `parse`    |   on    | Typed parsers for status / log / diff output                           |
+| `serde`    |   off   | `Serialize` / `Deserialize` on parsed types                            |
+| `workflow` |   off   | Higher-level helpers: `info`, `branches`, `tags`, `history`, workflow compositions (implies `parse`) |
 
 ## Contributing
 

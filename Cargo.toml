@@ -1,15 +1,15 @@
 [package]
-name = "git-wrapper"
+name = "git-spawn"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85.0"
 authors = ["Josh Rotenberg <joshrotenberg@gmail.com>"]
-description = "A Git CLI wrapper for Rust"
+description = "Async wrapper around the git CLI: builder commands, typed parsers, high-level workflow helpers"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/joshrotenberg/git-wrapper"
 homepage = "https://github.com/joshrotenberg/git-wrapper"
-documentation = "https://docs.rs/git-wrapper"
+documentation = "https://docs.rs/git-spawn"
 keywords = ["git", "cli", "wrapper", "vcs"]
 categories = ["development-tools", "api-bindings"]
 

@@ -1,6 +1,6 @@
 //! Integration tests for plumbing commands and typed parsers.
 
-use git_wrapper::{
+use git_spawn::{
     CatFileCommand, DescribeCommand, ForEachRefCommand, GitCommand, HashObjectCommand,
     LsFilesCommand, LsTreeCommand, Repository, RevParseCommand, ShowRefCommand, SymbolicRefCommand,
     UpdateRefCommand,
@@ -26,7 +26,7 @@ async fn make_repo_with_commit() -> (tempfile::TempDir, Repository) {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("repo");
     std::fs::create_dir_all(&path).unwrap();
-    let mut init = git_wrapper::InitCommand::in_directory(&path);
+    let mut init = git_spawn::InitCommand::in_directory(&path);
     init.initial_branch("main").quiet();
     let repo = init.execute().await.expect("init");
     configure_identity(&repo);
@@ -185,10 +185,8 @@ async fn symbolic_ref_short_returns_branch_name() {
 #[cfg(feature = "parse")]
 mod parsers {
     use super::*;
-    use git_wrapper::command::status::StatusFormat;
-    use git_wrapper::parse::{
-        DiffKind, StatusKind, parse_diff_name_status, parse_log, parse_status,
-    };
+    use git_spawn::command::status::StatusFormat;
+    use git_spawn::parse::{DiffKind, StatusKind, parse_diff_name_status, parse_log, parse_status};
 
     #[tokio::test]
     async fn status_parser_captures_modification() {
@@ -225,7 +223,7 @@ mod parsers {
 
         let out = repo
             .log()
-            .format(git_wrapper::parse::LOG_FORMAT)
+            .format(git_spawn::parse::LOG_FORMAT)
             .execute()
             .await
             .unwrap();

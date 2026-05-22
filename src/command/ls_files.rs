@@ -1,9 +1,9 @@
 //! `git ls-files` — show information about files in the index and working tree.
 //!
 //! ```no_run
-//! use git_wrapper::{GitCommand, LsFilesCommand};
+//! use git_spawn::{GitCommand, LsFilesCommand};
 //!
-//! # async fn example() -> git_wrapper::Result<()> {
+//! # async fn example() -> git_spawn::Result<()> {
 //! let mut cmd = LsFilesCommand::new();
 //! cmd.current_dir("/repo").cached();
 //! let out = cmd.execute().await?;

@@ -7,9 +7,9 @@
 //! [`Repository::log`], ...) to build commands pre-scoped to this repo.
 //!
 //! ```no_run
-//! use git_wrapper::{GitCommand, Repository};
+//! use git_spawn::{GitCommand, Repository};
 //!
-//! # async fn example() -> git_wrapper::Result<()> {
+//! # async fn example() -> git_spawn::Result<()> {
 //! // Create a fresh repo and commit a file into it.
 //! let repo = Repository::init("/tmp/demo").await?;
 //! std::fs::write(repo.path().join("hello.txt"), "hi")?;
@@ -22,8 +22,8 @@
 //! # Cloning an existing repo
 //!
 //! ```no_run
-//! # use git_wrapper::Repository;
-//! # async fn example() -> git_wrapper::Result<()> {
+//! # use git_spawn::Repository;
+//! # async fn example() -> git_spawn::Result<()> {
 //! let repo = Repository::clone(
 //!     "https://github.com/octocat/Hello-World.git",
 //!     "/tmp/hello-world",

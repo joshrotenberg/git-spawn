@@ -4,8 +4,8 @@
 //! cargo run --example commit_counter -- /path/to/repo 20
 //! ```
 
-use git_wrapper::parse::{LOG_FORMAT, parse_log};
-use git_wrapper::{GitCommand, Repository};
+use git_spawn::parse::{LOG_FORMAT, parse_log};
+use git_spawn::{GitCommand, Repository};
 use std::collections::HashMap;
 
 #[tokio::main]

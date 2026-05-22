@@ -1,7 +1,7 @@
 //! Integration tests for advanced (Phase 4) commands.
 
-use git_wrapper::command::config::ConfigScope;
-use git_wrapper::{
+use git_spawn::command::config::ConfigScope;
+use git_spawn::{
     BisectCommand, ConfigCommand, GitCommand, ReflogCommand, Repository, SubmoduleCommand,
     WorktreeCommand,
 };
@@ -26,7 +26,7 @@ async fn seed_repo() -> (tempfile::TempDir, Repository) {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("repo");
     std::fs::create_dir_all(&path).unwrap();
-    let mut init = git_wrapper::InitCommand::in_directory(&path);
+    let mut init = git_spawn::InitCommand::in_directory(&path);
     init.initial_branch("main").quiet();
     let repo = init.execute().await.expect("init");
     configure_identity(&repo);
@@ -80,7 +80,7 @@ async fn grep_no_match_errors() {
         .execute()
         .await
         .unwrap_err();
-    assert!(matches!(err, git_wrapper::Error::CommandFailed { .. }));
+    assert!(matches!(err, git_spawn::Error::CommandFailed { .. }));
 }
 
 #[tokio::test]
@@ -105,7 +105,7 @@ async fn cherry_pick_brings_commit_forward() {
     repo.commit().message("add-b").execute().await.unwrap();
 
     let topic_head = {
-        let mut rp = git_wrapper::RevParseCommand::new();
+        let mut rp = git_spawn::RevParseCommand::new();
         rp.current_dir(repo.path()).arg_str("HEAD");
         rp.execute().await.unwrap()
     };
@@ -125,7 +125,7 @@ async fn worktree_add_and_list_and_remove() {
     let (_tmp, repo) = {
         let path = tmp.path().join("main-repo");
         std::fs::create_dir_all(&path).unwrap();
-        let mut init = git_wrapper::InitCommand::in_directory(&path);
+        let mut init = git_spawn::InitCommand::in_directory(&path);
         init.initial_branch("main").quiet();
         let r = init.execute().await.unwrap();
         configure_identity(&r);

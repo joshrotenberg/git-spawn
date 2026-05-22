@@ -47,7 +47,7 @@ pub struct CommitEntry {
 ///
 /// # Example
 /// ```
-/// use git_wrapper::parse::{parse_log, LOG_FORMAT};
+/// use git_spawn::parse::{parse_log, LOG_FORMAT};
 /// # let _ = LOG_FORMAT; // silence unused if not used at doc-time
 /// let input = "abc\x1fabc\x1fA\x1fa@x\x1f2024-01-01T00:00:00Z\x1fB\x1fb@y\x1f2024-01-02T00:00:00Z\x1fhi\x1fbody\x1e";
 /// let commits = parse_log(input).unwrap();

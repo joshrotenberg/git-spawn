@@ -6,8 +6,8 @@
 //! `--format` and parse the output into `Vec<Commit>`.
 //!
 //! ```no_run
-//! # async fn ex() -> git_wrapper::Result<()> {
-//! use git_wrapper::Repository;
+//! # async fn ex() -> git_spawn::Result<()> {
+//! use git_spawn::Repository;
 //!
 //! let repo = Repository::open("/path/to/repo")?;
 //!

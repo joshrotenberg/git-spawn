@@ -64,7 +64,7 @@ impl From<char> for DiffKind {
 ///
 /// # Example
 /// ```
-/// use git_wrapper::parse::{parse_diff_name_status, DiffKind};
+/// use git_spawn::parse::{parse_diff_name_status, DiffKind};
 /// let input = "M\0foo.txt\0A\0bar.txt\0R100\0old.rs\0new.rs\0";
 /// let entries = parse_diff_name_status(input).unwrap();
 /// assert_eq!(entries.len(), 3);
