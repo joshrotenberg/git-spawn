@@ -21,6 +21,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 default = ["parse"]
 parse = []
 serde = ["dep:serde"]
+workflow = []
 
 [dependencies]
 tokio = { version = "1.46", features = [
