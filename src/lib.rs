@@ -95,10 +95,11 @@
 //!
 //! ## Feature flags
 //!
-//! | Flag    | Default | Purpose                                       |
-//! |---------|:-------:|-----------------------------------------------|
-//! | `parse` |   on    | Typed parsers for status/log/diff output      |
-//! | `serde` |   off   | `Serialize`/`Deserialize` on parsed types     |
+//! | Flag       | Default | Purpose                                            |
+//! |------------|:-------:|----------------------------------------------------|
+//! | `parse`    |   on    | Typed parsers for status/log/diff output           |
+//! | `serde`    |   off   | `Serialize`/`Deserialize` on parsed types          |
+//! | `workflow` |   off   | Higher-level helpers ([`info`], [`branches`], ...) |
 //!
 //! ## Error handling
 //!
@@ -127,6 +128,13 @@ pub mod error;
 #[cfg_attr(docsrs, doc(cfg(feature = "parse")))]
 pub mod parse;
 pub mod repo;
+
+#[cfg(feature = "workflow")]
+#[cfg_attr(docsrs, doc(cfg(feature = "workflow")))]
+pub mod branches;
+#[cfg(feature = "workflow")]
+#[cfg_attr(docsrs, doc(cfg(feature = "workflow")))]
+pub mod info;
 
 pub use command::{
     CommandExecutor, CommandOutput, GitCommand, add::AddCommand, bisect::BisectCommand,
