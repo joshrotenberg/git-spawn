@@ -34,7 +34,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 MSRV: **1.85** (Rust 2024 edition).
 
-## What's in the box
+## Capabilities
 
 - **Porcelain**: init, clone, add, commit, status, log, diff, show, branch,
   checkout, switch, merge, rebase, pull, push, fetch, remote, tag, stash,
