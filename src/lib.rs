@@ -99,7 +99,7 @@
 //! |------------|:-------:|----------------------------------------------------|
 //! | `parse`    |   on    | Typed parsers for status/log/diff output           |
 //! | `serde`    |   off   | `Serialize`/`Deserialize` on parsed types          |
-//! | `workflow` |   off   | Higher-level helpers ([`info`], [`branches`], ...) |
+//! | `workflow` |   off   | Higher-level helpers ([`info`], [`branches`], [`tags`], [`history`], [`workflow`]) |
 //!
 //! ## Error handling
 //!
@@ -134,7 +134,16 @@ pub mod repo;
 pub mod branches;
 #[cfg(feature = "workflow")]
 #[cfg_attr(docsrs, doc(cfg(feature = "workflow")))]
+pub mod history;
+#[cfg(feature = "workflow")]
+#[cfg_attr(docsrs, doc(cfg(feature = "workflow")))]
 pub mod info;
+#[cfg(feature = "workflow")]
+#[cfg_attr(docsrs, doc(cfg(feature = "workflow")))]
+pub mod tags;
+#[cfg(feature = "workflow")]
+#[cfg_attr(docsrs, doc(cfg(feature = "workflow")))]
+pub mod workflow;
 
 pub use command::{
     CommandExecutor, CommandOutput, GitCommand, add::AddCommand, bisect::BisectCommand,
