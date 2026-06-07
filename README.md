@@ -55,82 +55,31 @@ MSRV: **1.85** (Rust 2024 edition).
 
 ## Choosing a git library for Rust
 
-This crate is one of three realistic options. Pick based on what you're
-building, not which is "best."
+Three realistic options; pick by what you're building, not which is "best."
 
-| Project       | What it is                                            | You need `git` installed | Async-native | Honors local `git` config, hooks, credential helpers |
-|---------------|-------------------------------------------------------|:------------------------:|:------------:|:----------------------------------------------------:|
-| `git-spawn` | Async subprocess wrapper around the `git` CLI         |           yes            |     yes      |                         yes                          |
-| `git2`        | Rust bindings to [libgit2](https://libgit2.org) (C)   |            no            |      no      |                       partial                        |
-| `gix`         | Pure-Rust ([gitoxide](https://github.com/GitoxideLabs/gitoxide)) |            no            |     some     |                       partial                        |
+| Project       | What it is                                            | Needs `git` installed | Async-native | Honors local `git` config, hooks, credential helpers |
+|---------------|-------------------------------------------------------|:---------------------:|:------------:|:----------------------------------------------------:|
+| `git-spawn` | Async subprocess wrapper around the `git` CLI         |          yes          |     yes      |                         yes                          |
+| `git2`        | Rust bindings to [libgit2](https://libgit2.org) (C)   |          no           |      no      |                       partial                        |
+| `gix`         | Pure-Rust ([gitoxide](https://github.com/GitoxideLabs/gitoxide)) |          no           |     some     |                       partial                        |
 
-### When to reach for `git-spawn`
+- **`git-spawn`** -- automating workflows a human would script in bash (commit,
+  push, rebase, cherry-pick, tagging) where behavior must match the user's real
+  `git`: their `~/.gitconfig`, hooks, and credential helpers, run concurrently
+  under `tokio`. Any flag the typed API hasn't surfaced is reachable via the
+  escape hatches. Cost: a `git` binary on `PATH`, process-spawn overhead per
+  call, and output parsing (or the `parse` feature).
+- **`git2`** -- in-process object access (trees, blobs, commits) without
+  requiring users to have `git` installed. Cost: a C dependency, no first-class
+  async, and you wire up hooks/credentials yourself.
+- **`gix`** -- a pure-Rust stack (no C toolchain, easy cross-compilation) with
+  high-throughput object access for tooling built on git's data model. Cost: a
+  still-evolving API on some write/network paths; like `git2`, doesn't run your
+  hooks or credential helpers.
 
-- You're automating **workflows a human would script in bash**: commits,
-  pushes, rebases, cherry-picks, worktree setup, release tagging.
-- You want behavior to match **exactly what the user's `git` does** on the
-  host, including `~/.gitconfig`, `core.*` settings, pre-commit hooks,
-  SSH/HTTPS credential helpers, and `safe.directory`.
-- You're already in a `tokio` program and want to run several git operations
-  concurrently (fetching multiple remotes, building repos in parallel).
-- You need a feature that libgit2 / gix haven't implemented yet. Any `git`
-  flag works via the escape hatches.
-
-Trade-offs:
-
-- A `git` binary must be on `PATH` at runtime.
-- Each operation has process-spawn overhead (low hundreds of microseconds
-  to a few milliseconds). Fine for workflow automation; not fine for
-  tight loops over thousands of objects.
-- Output parsing is on you (or the `parse` feature).
-
-### When to reach for `git2`
-
-- You need **in-process object database access** (walking trees, reading
-  blobs, creating commits) without spawning a subprocess per call.
-- You're building a tool that should work without requiring users to have
-  `git` installed (GUIs, IDE plugins, CI containers).
-- You're comfortable with a C dependency: `git2` links libgit2, which
-  means a C compiler / CMake (or the vendored build) at build time.
-- Your program is sync or you're OK running libgit2 calls on a blocking
-  thread pool.
-
-Trade-offs:
-
-- No first-class async. You'll use `spawn_blocking` if you're in tokio.
-- libgit2 doesn't invoke the user's `git` hooks or credential helpers by
-  default; you implement credential callbacks yourself.
-- Some newer git features lag behind the CLI (partial clone variants,
-  SHA-256, sparse checkout modes).
-
-### When to reach for `gix`
-
-- You want a **pure-Rust** stack: no C toolchain, deterministic builds,
-  easy cross-compilation, no libgit2 CVEs to track.
-- You need high-throughput object access or want to build sophisticated
-  tooling on top of git's data model. `gix` is split into many focused
-  crates so you can take only what you need.
-- You're willing to accept a **still-evolving API** in some areas. The
-  read paths are solid; some write/network paths are newer.
-
-Trade-offs:
-
-- Like `git2`, doesn't run `git` hooks or credential helpers for you.
-- Not every git feature is implemented yet; check the gitoxide project
-  board for status of what you need.
-
-### Quick decision guide
-
-- "I'm calling `git push` / `git rebase` / `git clone` on behalf of a user."
-  -> `git-spawn`.
-- "I'm walking commit history to generate a report, or reading blobs, and
-  I can't require `git` to be installed."
-  -> `git2` if you need maturity and don't mind C; `gix` if you want pure Rust.
-- "I'm building a merge engine, a git server, or a CAS-backed fetcher."
-  -> `gix`.
-- "I want to let a user pick a commit and cherry-pick it onto another
-  branch, respecting their hooks."
-  -> `git-spawn`.
+Rule of thumb: calling `git` *on behalf of a user* -> `git-spawn`; reading or
+writing objects *without* a `git` install -> `git2` (mature, C) or `gix` (pure
+Rust); building a merge engine or git server -> `gix`.
 
 ## Usage
 
