@@ -157,6 +157,24 @@ impl GrepCommand {
         self.recurse_submodules = true;
         self
     }
+
+    /// Run the grep, treating "no matches" as success instead of an error.
+    ///
+    /// `git grep` exits 1 when nothing matched, which [`execute`](GitCommand::execute)
+    /// surfaces as [`Error::CommandFailed`] -- indistinguishable from a real
+    /// failure without inspecting the exit code. This method returns `Ok(None)`
+    /// for the no-match case and `Ok(Some(output))` when there were matches;
+    /// genuine failures (exit >= 2, e.g. a bad pathspec) still return `Err`.
+    pub async fn execute_allow_no_match(&self) -> Result<Option<CommandOutput>> {
+        if self.pattern.is_none() {
+            return Err(Error::invalid_config("grep requires a pattern"));
+        }
+        match self.execute_raw().await {
+            Ok(out) => Ok(Some(out)),
+            Err(Error::CommandFailed { exit_code: 1, .. }) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
 }
 
 #[async_trait]
@@ -231,7 +249,8 @@ impl GitCommand for GrepCommand {
             return Err(Error::invalid_config("grep requires a pattern"));
         }
         // `git grep` exits 1 on "no matches" which we surface as CommandFailed.
-        // Callers that want to distinguish should match on Error::CommandFailed.
+        // Callers that want "no matches" treated as success should use
+        // `execute_allow_no_match` instead.
         self.execute_raw().await
     }
 }

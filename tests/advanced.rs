@@ -84,6 +84,58 @@ async fn grep_no_match_errors() {
 }
 
 #[tokio::test]
+async fn grep_no_match_ok_returns_none() {
+    let (_tmp, repo) = seed_repo().await;
+    std::fs::write(repo.path().join("greeting.txt"), "hello world\n").unwrap();
+    repo.add().path("greeting.txt").execute().await.unwrap();
+    repo.commit().message("greet").execute().await.unwrap();
+
+    // No match -> Ok(None), not CommandFailed.
+    let none = repo
+        .grep("nothing-matches-this-xyz")
+        .fixed_strings()
+        .execute_allow_no_match()
+        .await
+        .unwrap();
+    assert!(none.is_none());
+
+    // A match -> Ok(Some(output)).
+    let some = repo
+        .grep("hello")
+        .fixed_strings()
+        .execute_allow_no_match()
+        .await
+        .unwrap()
+        .expect("expected a match");
+    assert!(some.stdout_str().contains("greeting.txt"));
+}
+
+#[tokio::test]
+async fn config_missing_key_opt_returns_none() {
+    let (_tmp, repo) = seed_repo().await;
+
+    // Missing key -> Ok(None).
+    let missing = repo
+        .config(ConfigCommand::get("nope.absent").scope(ConfigScope::Local))
+        .execute_value_opt()
+        .await
+        .unwrap();
+    assert!(missing.is_none());
+
+    // Present key -> Ok(Some(value)).
+    repo.config(ConfigCommand::set("present.key", "yes").scope(ConfigScope::Local))
+        .execute()
+        .await
+        .unwrap();
+    let present = repo
+        .config(ConfigCommand::get("present.key").scope(ConfigScope::Local))
+        .execute_value_opt()
+        .await
+        .unwrap();
+    assert_eq!(present.as_deref(), Some("yes"));
+}
+
+#[tokio::test]
 async fn reflog_shows_initial_commit() {
     let (_tmp, repo) = seed_repo().await;
     let out = repo

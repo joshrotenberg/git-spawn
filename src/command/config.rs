@@ -199,7 +199,8 @@ impl GitCommand for ConfigCommand {
 
     async fn execute(&self) -> Result<CommandOutput> {
         // `git config --get` returns exit 1 when the key is missing; surface
-        // that as CommandFailed per our standard model.
+        // that as CommandFailed per our standard model. Callers that want a
+        // missing key treated as `None` should use `execute_value_opt`.
         self.execute_raw().await
     }
 }
@@ -216,6 +217,27 @@ impl ConfigCommand {
             }
             _ => Err(Error::invalid_config(
                 "execute_value only applies to get / get-all actions",
+            )),
+        }
+    }
+
+    /// Like [`execute_value`](Self::execute_value), but treats a missing key
+    /// (exit 1) as `Ok(None)` rather than [`Error::CommandFailed`].
+    ///
+    /// `git config --get` exits 1 when the key is absent -- a normal outcome,
+    /// not a failure. Genuine errors (exit >= 2) still return `Err`. Only valid
+    /// for `get` / `get-all` actions.
+    pub async fn execute_value_opt(&self) -> Result<Option<String>> {
+        match self.action {
+            ConfigAction::Get { .. } | ConfigAction::GetAll { .. } => {
+                match self.execute_raw().await {
+                    Ok(out) => Ok(Some(out.stdout_trimmed())),
+                    Err(Error::CommandFailed { exit_code: 1, .. }) => Ok(None),
+                    Err(e) => Err(e),
+                }
+            }
+            _ => Err(Error::invalid_config(
+                "execute_value_opt only applies to get / get-all actions",
             )),
         }
     }
