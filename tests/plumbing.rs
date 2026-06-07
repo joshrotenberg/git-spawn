@@ -126,6 +126,24 @@ async fn cat_file_bytes_preserves_binary_blob() {
 }
 
 #[tokio::test]
+async fn repository_plumbing_accessors_are_scoped() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+
+    // Each accessor pre-scopes current_dir, so no manual setup is needed.
+    let head = repo.rev_parse().arg_str("HEAD").execute().await.unwrap();
+    assert_eq!(head.len(), 40);
+
+    let files = repo.ls_files().execute().await.unwrap();
+    assert!(files.stdout_str().lines().any(|l| l == "hello.txt"));
+
+    let refs = repo.show_ref().execute().await.unwrap();
+    assert!(refs.stdout_str().contains("refs/heads/"));
+
+    let tree = repo.ls_tree("HEAD").name_only().execute().await.unwrap();
+    assert!(tree.stdout_str().contains("hello.txt"));
+}
+
+#[tokio::test]
 async fn update_ref_creates_and_deletes() {
     let (_tmp, repo) = make_repo_with_commit().await;
     // Resolve HEAD to pass as new value.
