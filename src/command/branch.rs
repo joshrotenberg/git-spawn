@@ -94,7 +94,8 @@ impl BranchCommand {
         self
     }
 
-    /// Force delete.
+    /// Upgrade a [`delete`](Self::delete) to a force delete (`-D` instead of
+    /// `-d`). Has no effect unless `delete` is also set.
     pub fn force_delete(&mut self) -> &mut Self {
         self.force_delete = true;
         self
@@ -173,9 +174,6 @@ impl GitCommand for BranchCommand {
         if self.verbose {
             args.push("--verbose".into());
         }
-        if self.force_delete {
-            args.push("-D".into());
-        }
         if self.track {
             args.push("--track".into());
         }
@@ -198,7 +196,7 @@ impl GitCommand for BranchCommand {
             args.push(format!("--merged={m}"));
         }
         if let Some(d) = &self.delete {
-            args.push("-d".into());
+            args.push(if self.force_delete { "-D" } else { "-d" }.into());
             args.push(d.clone());
         } else if let (Some(from), Some(to)) = (&self.rename_from, &self.rename_to) {
             args.push("-m".into());

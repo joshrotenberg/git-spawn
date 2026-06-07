@@ -109,11 +109,18 @@ fn show_object_with_format() {
 #[test]
 fn branch_delete() {
     let mut c = BranchCommand::new();
+    c.delete("old");
+    assert_eq!(args_of(&c), vec!["branch", "-d", "old"]);
+}
+
+#[test]
+fn branch_force_delete() {
+    // force_delete upgrades the delete flag to -D; it must not emit both.
+    let mut c = BranchCommand::new();
     c.delete("old").force_delete();
     let a = args_of(&c);
-    assert!(a.contains(&"-D".to_string()));
-    assert!(a.contains(&"-d".to_string()));
-    assert!(a.contains(&"old".to_string()));
+    assert_eq!(a, vec!["branch", "-D", "old"]);
+    assert!(!a.contains(&"-d".to_string()));
 }
 
 #[test]
