@@ -63,7 +63,7 @@ async fn ls_files_sees_tracked_file() {
     let mut cmd = LsFilesCommand::new();
     cmd.current_dir(repo.path()).cached();
     let out = cmd.execute().await.unwrap();
-    assert!(out.stdout.lines().any(|l| l == "hello.txt"));
+    assert!(out.stdout_str().lines().any(|l| l == "hello.txt"));
 }
 
 #[tokio::test]
@@ -72,7 +72,7 @@ async fn ls_tree_head_name_only() {
     let mut cmd = LsTreeCommand::new("HEAD");
     cmd.current_dir(repo.path()).name_only();
     let out = cmd.execute().await.unwrap();
-    assert!(out.stdout.contains("hello.txt"));
+    assert!(out.stdout_str().contains("hello.txt"));
 }
 
 #[tokio::test]
@@ -105,6 +105,27 @@ async fn hash_object_write_and_read_back() {
 }
 
 #[tokio::test]
+async fn cat_file_bytes_preserves_binary_blob() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    // Bytes that are not valid UTF-8 (and include a NUL): lossy decoding would
+    // mangle these into U+FFFD.
+    let raw: &[u8] = &[0xff, 0xfe, 0x00, b'h', b'i', 0x80];
+    let blob_path = repo.path().join("binary.bin");
+    std::fs::write(&blob_path, raw).unwrap();
+
+    let mut h = HashObjectCommand::new();
+    h.current_dir(repo.path()).write().path(&blob_path);
+    let sha = h.execute().await.unwrap();
+
+    let mut c = CatFileCommand::pretty_print(&sha);
+    c.current_dir(repo.path());
+    // execute_bytes round-trips the blob byte-for-byte...
+    assert_eq!(c.execute_bytes().await.unwrap(), raw);
+    // ...while the lossy String path corrupts it (why execute_bytes exists).
+    assert_ne!(c.execute().await.unwrap().as_bytes(), raw);
+}
+
+#[tokio::test]
 async fn update_ref_creates_and_deletes() {
     let (_tmp, repo) = make_repo_with_commit().await;
     // Resolve HEAD to pass as new value.
@@ -124,7 +145,7 @@ async fn update_ref_creates_and_deletes() {
         .pattern("refs/heads/*")
         .format("%(refname:short)");
     let out = fe.execute().await.unwrap();
-    assert!(out.stdout.lines().any(|l| l == "shadow"));
+    assert!(out.stdout_str().lines().any(|l| l == "shadow"));
 
     // Delete and confirm.
     let mut rm = UpdateRefCommand::new();
@@ -133,7 +154,7 @@ async fn update_ref_creates_and_deletes() {
         .delete();
     rm.execute().await.unwrap();
     let out2 = fe.execute().await.unwrap();
-    assert!(!out2.stdout.lines().any(|l| l == "shadow"));
+    assert!(!out2.stdout_str().lines().any(|l| l == "shadow"));
 }
 
 #[tokio::test]
@@ -162,7 +183,7 @@ async fn show_ref_lists_heads() {
     let mut s = ShowRefCommand::new();
     s.current_dir(repo.path()).heads();
     let out = s.execute().await.unwrap();
-    assert!(out.stdout.contains("refs/heads/main"));
+    assert!(out.stdout_str().contains("refs/heads/main"));
 }
 
 #[tokio::test]
@@ -201,7 +222,7 @@ mod parsers {
             .execute()
             .await
             .unwrap();
-        let entries = parse_status(&out.stdout).unwrap();
+        let entries = parse_status(&out.stdout_str()).unwrap();
 
         let hello = entries.iter().find(|e| e.path == "hello.txt").unwrap();
         assert_eq!(hello.worktree, StatusKind::Modified);
@@ -227,7 +248,7 @@ mod parsers {
             .execute()
             .await
             .unwrap();
-        let commits = parse_log(&out.stdout).unwrap();
+        let commits = parse_log(&out.stdout_str()).unwrap();
         assert_eq!(commits.len(), 2);
         assert_eq!(commits[0].subject, "second commit");
         assert_eq!(commits[1].subject, "init");
@@ -249,7 +270,7 @@ mod parsers {
             .execute()
             .await
             .unwrap();
-        let entries = parse_diff_name_status(&out.stdout).unwrap();
+        let entries = parse_diff_name_status(&out.stdout_str()).unwrap();
         assert!(
             entries
                 .iter()

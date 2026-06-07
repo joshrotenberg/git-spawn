@@ -61,7 +61,7 @@
 //! let status = repo.status().format(
 //!     git_spawn::command::status::StatusFormat::PorcelainV2
 //! ).execute().await?;
-//! println!("{}", status.stdout);
+//! println!("{}", status.stdout_str());
 //! # Ok(())
 //! # }
 //! ```
@@ -84,7 +84,7 @@
 //!     .null_terminate()
 //!     .execute()
 //!     .await?;
-//! for entry in parse_status(&out.stdout)? {
+//! for entry in parse_status(&out.stdout_str())? {
 //!     if entry.index == StatusKind::Modified {
 //!         println!("modified in index: {}", entry.path);
 //!     }

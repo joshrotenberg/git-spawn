@@ -52,9 +52,9 @@ async fn add_and_commit() {
         .await
         .expect("commit");
     assert!(
-        out.stdout.contains("initial") || out.stdout.contains("main"),
+        out.stdout_str().contains("initial") || out.stdout_str().contains("main"),
         "unexpected commit output: {}",
-        out.stdout
+        out.stdout_str()
     );
 }
 
@@ -68,7 +68,7 @@ async fn status_short_after_write() {
         .execute()
         .await
         .unwrap();
-    assert!(out.stdout.contains("a.txt"));
+    assert!(out.stdout_str().contains("a.txt"));
 }
 
 #[tokio::test]
@@ -87,7 +87,7 @@ async fn branch_show_current() {
     repo.commit().message("c").execute().await.unwrap();
 
     let out = repo.branch().show_current().execute().await.unwrap();
-    assert_eq!(out.stdout.trim(), "main");
+    assert_eq!(out.stdout_str().trim(), "main");
 }
 
 #[tokio::test]
@@ -99,7 +99,7 @@ async fn tag_list_after_creation() {
 
     repo.tag().name("v1.0.0").execute().await.unwrap();
     let out = repo.tag().list().execute().await.unwrap();
-    assert!(out.stdout.contains("v1.0.0"));
+    assert!(out.stdout_str().contains("v1.0.0"));
 }
 
 #[tokio::test]
@@ -111,8 +111,8 @@ async fn diff_shows_unstaged_change() {
 
     std::fs::write(repo.path().join("f"), "two\n").unwrap();
     let out = repo.diff().execute().await.unwrap();
-    assert!(out.stdout.contains("-one"));
-    assert!(out.stdout.contains("+two"));
+    assert!(out.stdout_str().contains("-one"));
+    assert!(out.stdout_str().contains("+two"));
 }
 
 #[tokio::test]
@@ -151,7 +151,7 @@ async fn branch_create_and_switch() {
     repo.branch().create("feature").execute().await.unwrap();
     repo.switch().target("feature").execute().await.unwrap();
     let out = repo.branch().show_current().execute().await.unwrap();
-    assert_eq!(out.stdout.trim(), "feature");
+    assert_eq!(out.stdout_str().trim(), "feature");
 }
 
 #[tokio::test]
@@ -161,7 +161,7 @@ async fn checkout_creates_branch() {
 
     repo.checkout().create("topic").execute().await.unwrap();
     let out = repo.branch().show_current().execute().await.unwrap();
-    assert_eq!(out.stdout.trim(), "topic");
+    assert_eq!(out.stdout_str().trim(), "topic");
 }
 
 #[tokio::test]
@@ -208,7 +208,7 @@ async fn restore_staged_path() {
 
     // After unstaging, `git diff --cached` should be empty.
     let out = repo.diff().cached().execute().await.unwrap();
-    assert!(out.stdout.trim().is_empty(), "unexpected: {}", out.stdout);
+    assert!(out.stdout_str().trim().is_empty(), "unexpected: {}", out.stdout_str());
 }
 
 #[tokio::test]
@@ -226,7 +226,7 @@ async fn rm_cached_keeps_file() {
         .execute()
         .await
         .unwrap();
-    assert!(out.stdout.contains("D"));
+    assert!(out.stdout_str().contains("D"));
 }
 
 #[tokio::test]
@@ -276,8 +276,8 @@ async fn remote_add_and_list() {
         .execute()
         .await
         .unwrap();
-    assert!(out.stdout.contains("upstream"));
-    assert!(out.stdout.contains("https://example.com/repo.git"));
+    assert!(out.stdout_str().contains("upstream"));
+    assert!(out.stdout_str().contains("https://example.com/repo.git"));
 }
 
 #[tokio::test]

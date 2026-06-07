@@ -128,7 +128,7 @@ impl<'a> TagOps<'a> {
             .pattern(pattern.unwrap_or_else(|| "refs/tags/".to_string()));
         cmd.current_dir(self.repo.path());
         let out = cmd.execute().await?;
-        parse_tags(&out.stdout)
+        parse_tags(&out.stdout_str())
     }
 }
 

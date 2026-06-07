@@ -66,8 +66,8 @@ async fn grep_matches_content() {
         .execute()
         .await
         .unwrap();
-    assert!(out.stdout.contains("greeting.txt"));
-    assert!(out.stdout.contains("hello world"));
+    assert!(out.stdout_str().contains("greeting.txt"));
+    assert!(out.stdout_str().contains("hello world"));
 }
 
 #[tokio::test]
@@ -91,7 +91,7 @@ async fn reflog_shows_initial_commit() {
         .execute()
         .await
         .unwrap();
-    assert!(out.stdout.contains("c1"));
+    assert!(out.stdout_str().contains("c1"));
 }
 
 #[tokio::test]
@@ -147,7 +147,7 @@ async fn worktree_add_and_list_and_remove() {
         .execute()
         .await
         .unwrap();
-    assert!(list.stdout.contains("worktree "));
+    assert!(list.stdout_str().contains("worktree "));
 
     repo.worktree(WorktreeCommand::remove(&wt_path).force())
         .execute()
@@ -166,7 +166,7 @@ async fn submodule_status_on_empty_repo() {
         .execute()
         .await
         .unwrap();
-    assert!(out.stdout.trim().is_empty());
+    assert!(out.stdout_str().trim().is_empty());
 }
 
 #[tokio::test]

@@ -10,7 +10,7 @@
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let repo = Repository::open("/path/to/repo")?;
 //! match repo.log().max_count(10).execute().await {
-//!     Ok(out) => println!("{}", out.stdout),
+//!     Ok(out) => println!("{}", out.stdout_str()),
 //!     Err(Error::GitNotFound) => eprintln!("install git first"),
 //!     Err(Error::CommandFailed { stderr, exit_code, .. }) => {
 //!         eprintln!("git failed (exit {exit_code}):\n{stderr}")

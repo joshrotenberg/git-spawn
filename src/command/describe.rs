@@ -155,6 +155,6 @@ impl GitCommand for DescribeCommand {
 
     async fn execute(&self) -> Result<String> {
         let out = self.execute_raw().await?;
-        Ok(out.stdout_trimmed().to_string())
+        Ok(out.stdout_trimmed())
     }
 }

@@ -175,7 +175,7 @@ async fn modified_paths() -> git_spawn::Result<()> {
         .execute()
         .await?;
 
-    for entry in parse_status(&out.stdout)? {
+    for entry in parse_status(&out.stdout_str())? {
         if entry.worktree == StatusKind::Modified {
             println!("modified: {}", entry.path);
         }
@@ -239,7 +239,7 @@ async fn shortstat() -> git_spawn::Result<()> {
     let repo = Repository::open("/repo")?;
     // `--shortstat` isn't a typed method on DiffCommand, but this still works:
     let out = repo.diff().cached().arg("--shortstat").execute().await?;
-    println!("{}", out.stdout);
+    println!("{}", out.stdout_str());
     Ok(())
 }
 ```

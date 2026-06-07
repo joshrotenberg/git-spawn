@@ -64,12 +64,30 @@ impl CatFileCommand {
             object: object.into(),
         }
     }
+
+    /// Run the command and return stdout as raw, untrimmed bytes.
+    ///
+    /// Prefer this over [`execute`](GitCommand::execute) when the object may be
+    /// binary (typically `pretty_print` on a blob): `execute` decodes stdout
+    /// lossily as UTF-8 and trims trailing whitespace, either of which corrupts
+    /// binary content.
+    pub async fn execute_bytes(&self) -> Result<Vec<u8>> {
+        if self.object.is_empty() {
+            return Err(Error::invalid_config(
+                "cat-file requires a non-empty object",
+            ));
+        }
+        let out = self.execute_raw().await?;
+        Ok(out.stdout)
+    }
 }
 
 #[async_trait]
 impl GitCommand for CatFileCommand {
-    /// Trimmed stdout. For `Exists` mode, success is reported via `Ok(String::new())`;
-    /// a missing object returns [`Error::CommandFailed`].
+    /// Trimmed, lossily-decoded stdout. For `Exists` mode, success is reported
+    /// via `Ok(String::new())`; a missing object returns
+    /// [`Error::CommandFailed`]. For binary blobs use
+    /// [`execute_bytes`](CatFileCommand::execute_bytes) instead.
     type Output = String;
     fn get_executor(&self) -> &CommandExecutor {
         &self.executor
@@ -93,6 +111,6 @@ impl GitCommand for CatFileCommand {
             ));
         }
         let out = self.execute_raw().await?;
-        Ok(out.stdout_trimmed().to_string())
+        Ok(out.stdout_trimmed())
     }
 }

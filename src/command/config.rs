@@ -212,7 +212,7 @@ impl ConfigCommand {
         match self.action {
             ConfigAction::Get { .. } | ConfigAction::GetAll { .. } => {
                 let out = self.execute_raw().await?;
-                Ok(out.stdout_trimmed().to_string())
+                Ok(out.stdout_trimmed())
             }
             _ => Err(Error::invalid_config(
                 "execute_value only applies to get / get-all actions",

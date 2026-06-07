@@ -83,6 +83,6 @@ impl GitCommand for HashObjectCommand {
             ));
         }
         let out = self.execute_raw().await?;
-        Ok(out.stdout_trimmed().to_string())
+        Ok(out.stdout_trimmed())
     }
 }
