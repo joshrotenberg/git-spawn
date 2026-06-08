@@ -1,0 +1,23 @@
+name: PR Title
+
+# The repo squash-merges, and the squash commit's subject is the PR title
+# (see the repo's squash_merge_commit_title=PR_TITLE setting). release-plz parses
+# that subject to compute the version bump and changelog group. A non-conventional
+# PR title therefore yields a wrong/missing release entry, so enforce the format
+# on the title itself.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  conventional:
+    name: Conventional PR title
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

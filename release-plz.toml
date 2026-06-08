@@ -33,6 +33,10 @@ commit_parsers = [
     { message = "^test", group = "Testing" },
     { message = "^chore\\(release\\)", skip = true },
     { message = "^chore\\(deps\\)", skip = true },
+    { message = "^chore: release", skip = true },
     { message = "^chore", group = "Miscellaneous" },
     { message = "^ci", skip = true },
+    # Catch-all: a commit whose subject is not a conventional type still shows
+    # up (under "Other") instead of silently vanishing from the changelog.
+    { message = ".*", group = "Other" },
 ]
