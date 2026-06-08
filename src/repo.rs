@@ -39,8 +39,8 @@ use crate::command::{
     commit::CommitCommand, config::ConfigCommand, describe::DescribeCommand, diff::DiffCommand,
     fetch::FetchCommand, grep::GrepCommand, init::InitCommand, log::LogCommand,
     ls_files::LsFilesCommand, ls_tree::LsTreeCommand, merge::MergeCommand, mv::MvCommand,
-    pull::PullCommand, push::PushCommand, rebase::RebaseCommand, reflog::ReflogCommand,
-    remote::RemoteCommand, reset::ResetCommand, restore::RestoreCommand,
+    notes::NotesCommand, pull::PullCommand, push::PushCommand, rebase::RebaseCommand,
+    reflog::ReflogCommand, remote::RemoteCommand, reset::ResetCommand, restore::RestoreCommand,
     rev_parse::RevParseCommand, rm::RmCommand, show::ShowCommand, show_ref::ShowRefCommand,
     stash::StashCommand, status::StatusCommand, submodule::SubmoduleCommand, switch::SwitchCommand,
     symbolic_ref::SymbolicRefCommand, tag::TagCommand, worktree::WorktreeCommand,
@@ -237,6 +237,18 @@ impl Repository {
     #[must_use]
     pub fn tag(&self) -> TagCommand {
         let mut c = TagCommand::new();
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`NotesCommand`] scoped to this repository.
+    ///
+    /// Construct `action` with [`NotesCommand::add`], [`NotesCommand::append`],
+    /// [`NotesCommand::copy`], [`NotesCommand::show`], [`NotesCommand::list`],
+    /// [`NotesCommand::remove`], or [`NotesCommand::prune`].
+    #[must_use]
+    pub fn notes(&self, action: NotesCommand) -> NotesCommand {
+        let mut c = action;
         c.current_dir(&self.path);
         c
     }

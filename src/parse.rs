@@ -12,11 +12,14 @@
 //! - [`status`] — parse `git status --porcelain=v1 -z` output
 //! - [`log`] — parse `git log` output using a fixed format token string
 //! - [`diff`] — parse `git diff --name-status -z` output
+//! - [`notes`] — parse `git notes list` output into `(note, object)` pairs
 
 pub mod diff;
 pub mod log;
+pub mod notes;
 pub mod status;
 
 pub use diff::{DiffEntry, DiffKind, parse_diff_name_status};
 pub use log::{CommitEntry, LOG_FORMAT, parse_log};
+pub use notes::parse_notes_list;
 pub use status::{StatusEntry, StatusKind, parse_status};
