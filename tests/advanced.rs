@@ -20,13 +20,15 @@ async fn seed_repo() -> (tempfile::TempDir, Repository) {
 #[tokio::test]
 async fn config_set_and_get() {
     let (_tmp, repo) = seed_repo().await;
-    repo.config(ConfigCommand::set("test.key", "hello").scope(ConfigScope::Local))
+    repo.config(ConfigCommand::set("test.key", "hello"))
+        .scope(ConfigScope::Local)
         .execute()
         .await
         .unwrap();
 
     let value = repo
-        .config(ConfigCommand::get("test.key").scope(ConfigScope::Local))
+        .config(ConfigCommand::get("test.key"))
+        .scope(ConfigScope::Local)
         .execute_value()
         .await
         .unwrap();
@@ -97,19 +99,22 @@ async fn config_missing_key_opt_returns_none() {
 
     // Missing key -> Ok(None).
     let missing = repo
-        .config(ConfigCommand::get("nope.absent").scope(ConfigScope::Local))
+        .config(ConfigCommand::get("nope.absent"))
+        .scope(ConfigScope::Local)
         .execute_value_opt()
         .await
         .unwrap();
     assert!(missing.is_none());
 
     // Present key -> Ok(Some(value)).
-    repo.config(ConfigCommand::set("present.key", "yes").scope(ConfigScope::Local))
+    repo.config(ConfigCommand::set("present.key", "yes"))
+        .scope(ConfigScope::Local)
         .execute()
         .await
         .unwrap();
     let present = repo
-        .config(ConfigCommand::get("present.key").scope(ConfigScope::Local))
+        .config(ConfigCommand::get("present.key"))
+        .scope(ConfigScope::Local)
         .execute_value_opt()
         .await
         .unwrap();
@@ -120,7 +125,8 @@ async fn config_missing_key_opt_returns_none() {
 async fn reflog_shows_initial_commit() {
     let (_tmp, repo) = seed_repo().await;
     let out = repo
-        .reflog(ReflogCommand::show().max_count(10))
+        .reflog(ReflogCommand::show())
+        .max_count(10)
         .execute()
         .await
         .unwrap();
@@ -169,7 +175,8 @@ async fn worktree_add_and_list_and_remove() {
     };
 
     let wt_path = repo.path().parent().unwrap().join("wt");
-    repo.worktree(WorktreeCommand::add(&wt_path).new_branch("wt-branch"))
+    repo.worktree(WorktreeCommand::add(&wt_path))
+        .new_branch("wt-branch")
         .execute()
         .await
         .unwrap();
@@ -182,7 +189,8 @@ async fn worktree_add_and_list_and_remove() {
         .unwrap();
     assert!(list.stdout_str().contains("worktree "));
 
-    repo.worktree(WorktreeCommand::remove(&wt_path).force())
+    repo.worktree(WorktreeCommand::remove(&wt_path))
+        .force()
         .execute()
         .await
         .unwrap();
@@ -211,14 +219,12 @@ async fn bisect_start_and_reset() {
     repo.commit().message("c2").execute().await.unwrap();
 
     // Start bisect with explicit bad=HEAD, good=HEAD~1.
-    repo.bisect(
-        BisectCommand::start()
-            .bad_commit("HEAD")
-            .good_commit("HEAD~1"),
-    )
-    .execute()
-    .await
-    .unwrap();
+    repo.bisect(BisectCommand::start())
+        .bad_commit("HEAD")
+        .good_commit("HEAD~1")
+        .execute()
+        .await
+        .unwrap();
 
     // Reset cleans up the bisect state.
     repo.bisect(BisectCommand::reset(None))

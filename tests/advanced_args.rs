@@ -43,13 +43,15 @@ fn grep_in_tree() {
 
 #[test]
 fn config_get_with_scope() {
-    let c = ConfigCommand::get("user.email").scope(ConfigScope::Global);
+    let mut c = ConfigCommand::get("user.email");
+    c.scope(ConfigScope::Global);
     assert_eq!(args_of(&c), vec!["config", "--global", "user.email"]);
 }
 
 #[test]
 fn config_set_local() {
-    let c = ConfigCommand::set("user.name", "Ada").scope(ConfigScope::Local);
+    let mut c = ConfigCommand::set("user.name", "Ada");
+    c.scope(ConfigScope::Local);
     assert_eq!(args_of(&c), vec!["config", "--local", "user.name", "Ada"]);
 }
 
@@ -61,13 +63,15 @@ fn config_list() {
 
 #[test]
 fn reflog_show_head() {
-    let c = ReflogCommand::show().max_count(5);
+    let mut c = ReflogCommand::show();
+    c.max_count(5);
     assert_eq!(args_of(&c), vec!["reflog", "show", "-n5"]);
 }
 
 #[test]
 fn worktree_add_with_branch() {
-    let c = WorktreeCommand::add("/tmp/wt").new_branch("feature");
+    let mut c = WorktreeCommand::add("/tmp/wt");
+    c.new_branch("feature");
     assert_eq!(
         args_of(&c),
         vec!["worktree", "add", "-b", "feature", "/tmp/wt"]
@@ -82,7 +86,8 @@ fn worktree_list_porcelain() {
 
 #[test]
 fn worktree_remove_force() {
-    let c = WorktreeCommand::remove("/tmp/wt").force();
+    let mut c = WorktreeCommand::remove("/tmp/wt");
+    c.force();
     assert_eq!(
         args_of(&c),
         vec!["worktree", "remove", "--force", "/tmp/wt"]
@@ -91,7 +96,8 @@ fn worktree_remove_force() {
 
 #[test]
 fn submodule_add_with_path() {
-    let c = SubmoduleCommand::add("https://example.com/sub.git").path("vendor/sub");
+    let mut c = SubmoduleCommand::add("https://example.com/sub.git");
+    c.path("vendor/sub");
     assert_eq!(
         args_of(&c),
         vec![
@@ -105,7 +111,8 @@ fn submodule_add_with_path() {
 
 #[test]
 fn submodule_update_init_recursive() {
-    let c = SubmoduleCommand::update().with_init().recursive();
+    let mut c = SubmoduleCommand::update();
+    c.with_init().recursive();
     assert_eq!(
         args_of(&c),
         vec!["submodule", "update", "--init", "--recursive"]
@@ -114,9 +121,8 @@ fn submodule_update_init_recursive() {
 
 #[test]
 fn bisect_start_with_bad_and_good() {
-    let c = BisectCommand::start()
-        .bad_commit("HEAD")
-        .good_commit("v1.0");
+    let mut c = BisectCommand::start();
+    c.bad_commit("HEAD").good_commit("v1.0");
     assert_eq!(args_of(&c), vec!["bisect", "start", "HEAD", "v1.0"]);
 }
 

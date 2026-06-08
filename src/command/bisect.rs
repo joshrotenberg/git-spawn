@@ -54,8 +54,7 @@ impl BisectCommand {
     }
 
     /// Set initial `bad` commit.
-    #[must_use]
-    pub fn bad_commit(mut self, c: impl Into<String>) -> Self {
+    pub fn bad_commit(&mut self, c: impl Into<String>) -> &mut Self {
         if let BisectAction::Start { bad, .. } = &mut self.action {
             *bad = Some(c.into());
         }
@@ -63,8 +62,7 @@ impl BisectCommand {
     }
 
     /// Add a known-`good` commit (for `start`).
-    #[must_use]
-    pub fn good_commit(mut self, c: impl Into<String>) -> Self {
+    pub fn good_commit(&mut self, c: impl Into<String>) -> &mut Self {
         if let BisectAction::Start { good, .. } = &mut self.action {
             good.push(c.into());
         }

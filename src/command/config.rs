@@ -141,8 +141,7 @@ impl ConfigCommand {
     }
 
     /// Limit to a particular scope.
-    #[must_use]
-    pub fn scope(mut self, s: ConfigScope) -> Self {
+    pub fn scope(&mut self, s: ConfigScope) -> &mut Self {
         self.scope = Some(s);
         self
     }

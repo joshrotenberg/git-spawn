@@ -215,10 +215,8 @@ fn tag_annotated() {
 
 #[test]
 fn stash_push_with_message() {
-    let c = StashCommand::push()
-        .message("wip")
-        .include_untracked()
-        .keep_index();
+    let mut c = StashCommand::push();
+    c.message("wip").include_untracked().keep_index();
     assert_eq!(
         args_of(&c),
         vec![
@@ -345,13 +343,15 @@ fn show_ref_heads_pattern() {
 
 #[test]
 fn symbolic_ref_read_head() {
-    let c = SymbolicRefCommand::read("HEAD").short();
+    let mut c = SymbolicRefCommand::read("HEAD");
+    c.short();
     assert_eq!(args_of(&c), vec!["symbolic-ref", "--short", "HEAD"]);
 }
 
 #[test]
 fn symbolic_ref_set_with_reason() {
-    let c = SymbolicRefCommand::set("HEAD", "refs/heads/main").reason("switching branches");
+    let mut c = SymbolicRefCommand::set("HEAD", "refs/heads/main");
+    c.reason("switching branches");
     assert_eq!(
         args_of(&c),
         vec![
@@ -366,7 +366,8 @@ fn symbolic_ref_set_with_reason() {
 
 #[test]
 fn symbolic_ref_delete() {
-    let c = SymbolicRefCommand::delete("FETCH_HEAD").quiet();
+    let mut c = SymbolicRefCommand::delete("FETCH_HEAD");
+    c.quiet();
     assert_eq!(
         args_of(&c),
         vec!["symbolic-ref", "--delete", "-q", "FETCH_HEAD"]

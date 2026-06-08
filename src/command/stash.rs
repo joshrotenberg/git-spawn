@@ -60,7 +60,7 @@ impl StashCommand {
     }
 
     /// Set push message.
-    pub fn message(mut self, m: impl Into<String>) -> Self {
+    pub fn message(&mut self, m: impl Into<String>) -> &mut Self {
         if let StashAction::Push { message, .. } = &mut self.action {
             *message = Some(m.into());
         }
@@ -68,8 +68,7 @@ impl StashCommand {
     }
 
     /// Include untracked files.
-    #[must_use]
-    pub fn include_untracked(mut self) -> Self {
+    pub fn include_untracked(&mut self) -> &mut Self {
         if let StashAction::Push {
             include_untracked, ..
         } = &mut self.action
@@ -80,8 +79,7 @@ impl StashCommand {
     }
 
     /// Keep index intact.
-    #[must_use]
-    pub fn keep_index(mut self) -> Self {
+    pub fn keep_index(&mut self) -> &mut Self {
         if let StashAction::Push { keep_index, .. } = &mut self.action {
             *keep_index = true;
         }

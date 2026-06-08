@@ -54,8 +54,7 @@ impl SymbolicRefCommand {
     }
 
     /// `--short` for a read (only applies when the action is [`read`](Self::read)).
-    #[must_use]
-    pub fn short(mut self) -> Self {
+    pub fn short(&mut self) -> &mut Self {
         if let SymbolicRefAction::Read { short, .. } = &mut self.action {
             *short = true;
         }
@@ -75,8 +74,7 @@ impl SymbolicRefCommand {
     }
 
     /// Set the reflog reason (`-m`, only for [`set`](Self::set)).
-    #[must_use]
-    pub fn reason(mut self, r: impl Into<String>) -> Self {
+    pub fn reason(&mut self, r: impl Into<String>) -> &mut Self {
         if let SymbolicRefAction::Set { reason, .. } = &mut self.action {
             *reason = Some(r.into());
         }
@@ -95,8 +93,7 @@ impl SymbolicRefCommand {
     }
 
     /// `-q` (only for [`delete`](Self::delete)).
-    #[must_use]
-    pub fn quiet(mut self) -> Self {
+    pub fn quiet(&mut self) -> &mut Self {
         if let SymbolicRefAction::Delete { quiet, .. } = &mut self.action {
             *quiet = true;
         }

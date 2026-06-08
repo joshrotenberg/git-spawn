@@ -89,8 +89,7 @@ impl WorktreeCommand {
     }
 
     /// Check out `commit_ish` in the new worktree (requires [`add`](Self::add)).
-    #[must_use]
-    pub fn commit_ish(mut self, c: impl Into<String>) -> Self {
+    pub fn commit_ish(&mut self, c: impl Into<String>) -> &mut Self {
         if let WorktreeAction::Add { commit_ish, .. } = &mut self.action {
             *commit_ish = Some(c.into());
         }
@@ -98,8 +97,7 @@ impl WorktreeCommand {
     }
 
     /// Create a new branch at the new worktree (requires [`add`](Self::add)).
-    #[must_use]
-    pub fn new_branch(mut self, b: impl Into<String>) -> Self {
+    pub fn new_branch(&mut self, b: impl Into<String>) -> &mut Self {
         if let WorktreeAction::Add { new_branch, .. } = &mut self.action {
             *new_branch = Some(b.into());
         }
@@ -107,8 +105,7 @@ impl WorktreeCommand {
     }
 
     /// `--detach` (requires [`add`](Self::add)).
-    #[must_use]
-    pub fn detach(mut self) -> Self {
+    pub fn detach(&mut self) -> &mut Self {
         if let WorktreeAction::Add { detach, .. } = &mut self.action {
             *detach = true;
         }
@@ -116,8 +113,7 @@ impl WorktreeCommand {
     }
 
     /// `--force` (requires [`add`](Self::add) or [`remove`](Self::remove)).
-    #[must_use]
-    pub fn force(mut self) -> Self {
+    pub fn force(&mut self) -> &mut Self {
         match &mut self.action {
             WorktreeAction::Add { force, .. } | WorktreeAction::Remove { force, .. } => {
                 *force = true;
@@ -191,8 +187,7 @@ impl WorktreeCommand {
     }
 
     /// Attach a `--reason` (requires [`lock`](Self::lock)).
-    #[must_use]
-    pub fn reason(mut self, r: impl Into<String>) -> Self {
+    pub fn reason(&mut self, r: impl Into<String>) -> &mut Self {
         if let WorktreeAction::Lock { reason, .. } = &mut self.action {
             *reason = Some(r.into());
         }

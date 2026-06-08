@@ -222,7 +222,8 @@ async fn stash_push_and_pop() {
     commit_one(&repo, "f", "one\n", "init").await;
     std::fs::write(repo.path().join("f"), "two\n").unwrap();
 
-    repo.stash(git_spawn::StashCommand::push().message("wip"))
+    repo.stash(git_spawn::StashCommand::push())
+        .message("wip")
         .execute()
         .await
         .unwrap();
