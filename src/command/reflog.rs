@@ -67,8 +67,7 @@ impl ReflogCommand {
     }
 
     /// Set the ref (for `show`).
-    #[must_use]
-    pub fn ref_name(mut self, r: impl Into<String>) -> Self {
+    pub fn ref_name(&mut self, r: impl Into<String>) -> &mut Self {
         if let ReflogAction::Show { ref_name, .. } = &mut self.action {
             *ref_name = Some(r.into());
         }
@@ -76,8 +75,7 @@ impl ReflogCommand {
     }
 
     /// `-n` / `--max-count` (for `show`).
-    #[must_use]
-    pub fn max_count(mut self, n: u32) -> Self {
+    pub fn max_count(&mut self, n: u32) -> &mut Self {
         if let ReflogAction::Show { max_count, .. } = &mut self.action {
             *max_count = Some(n);
         }
@@ -85,8 +83,7 @@ impl ReflogCommand {
     }
 
     /// Set `--format` (for `show`).
-    #[must_use]
-    pub fn format(mut self, f: impl Into<String>) -> Self {
+    pub fn format(&mut self, f: impl Into<String>) -> &mut Self {
         if let ReflogAction::Show { format, .. } = &mut self.action {
             *format = Some(f.into());
         }

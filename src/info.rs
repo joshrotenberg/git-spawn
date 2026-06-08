@@ -76,8 +76,8 @@ impl Repository {
 
         let mut info = parse_porcelain_v2(&status_out.stdout_str());
 
-        let mut sym = SymbolicRefCommand::read("refs/remotes/origin/HEAD").short();
-        sym.current_dir(self.path());
+        let mut sym = SymbolicRefCommand::read("refs/remotes/origin/HEAD");
+        sym.short().current_dir(self.path());
         if let Ok(target) = sym.execute().await {
             let short = target
                 .strip_prefix("origin/")

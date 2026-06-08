@@ -95,8 +95,7 @@ impl SubmoduleCommand {
     }
 
     /// Set the submodule path (for `add`).
-    #[must_use]
-    pub fn path(mut self, p: impl Into<PathBuf>) -> Self {
+    pub fn path(&mut self, p: impl Into<PathBuf>) -> &mut Self {
         if let SubmoduleAction::Add { path, .. } = &mut self.action {
             *path = Some(p.into());
         }
@@ -104,8 +103,7 @@ impl SubmoduleCommand {
     }
 
     /// Set `-b` branch (for `add`).
-    #[must_use]
-    pub fn branch(mut self, b: impl Into<String>) -> Self {
+    pub fn branch(&mut self, b: impl Into<String>) -> &mut Self {
         if let SubmoduleAction::Add { branch, .. } = &mut self.action {
             *branch = Some(b.into());
         }
@@ -113,8 +111,7 @@ impl SubmoduleCommand {
     }
 
     /// Set `--force` (for `add` / `update` / `deinit`).
-    #[must_use]
-    pub fn force(mut self) -> Self {
+    pub fn force(&mut self) -> &mut Self {
         match &mut self.action {
             SubmoduleAction::Add { force, .. }
             | SubmoduleAction::Update { force, .. }
@@ -151,8 +148,7 @@ impl SubmoduleCommand {
     }
 
     /// `--init` (for `update`).
-    #[must_use]
-    pub fn with_init(mut self) -> Self {
+    pub fn with_init(&mut self) -> &mut Self {
         if let SubmoduleAction::Update { init, .. } = &mut self.action {
             *init = true;
         }
@@ -160,8 +156,7 @@ impl SubmoduleCommand {
     }
 
     /// `--recursive` (for `update` / `status` / `foreach` / `sync`).
-    #[must_use]
-    pub fn recursive(mut self) -> Self {
+    pub fn recursive(&mut self) -> &mut Self {
         match &mut self.action {
             SubmoduleAction::Update { recursive, .. }
             | SubmoduleAction::Status { recursive, .. }
@@ -175,8 +170,7 @@ impl SubmoduleCommand {
     }
 
     /// `--remote` (for `update`).
-    #[must_use]
-    pub fn remote(mut self) -> Self {
+    pub fn remote(&mut self) -> &mut Self {
         if let SubmoduleAction::Update { remote, .. } = &mut self.action {
             *remote = true;
         }
@@ -184,8 +178,7 @@ impl SubmoduleCommand {
     }
 
     /// Restrict to a given path.
-    #[must_use]
-    pub fn restrict_path(mut self, p: impl Into<PathBuf>) -> Self {
+    pub fn restrict_path(&mut self, p: impl Into<PathBuf>) -> &mut Self {
         let p = p.into();
         match &mut self.action {
             SubmoduleAction::Init { paths }
@@ -214,8 +207,7 @@ impl SubmoduleCommand {
     }
 
     /// `--cached` (for `status`).
-    #[must_use]
-    pub fn cached(mut self) -> Self {
+    pub fn cached(&mut self) -> &mut Self {
         if let SubmoduleAction::Status { cached, .. } = &mut self.action {
             *cached = true;
         }
@@ -247,8 +239,7 @@ impl SubmoduleCommand {
     }
 
     /// `--all` (for `deinit`).
-    #[must_use]
-    pub fn all(mut self) -> Self {
+    pub fn all(&mut self) -> &mut Self {
         if let SubmoduleAction::Deinit { all, .. } = &mut self.action {
             *all = true;
         }

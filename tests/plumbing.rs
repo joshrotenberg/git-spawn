@@ -196,8 +196,8 @@ async fn symbolic_ref_reads_head() {
 #[tokio::test]
 async fn symbolic_ref_short_returns_branch_name() {
     let (_tmp, repo) = make_repo_with_commit().await;
-    let mut s = SymbolicRefCommand::read("HEAD").short();
-    s.current_dir(repo.path());
+    let mut s = SymbolicRefCommand::read("HEAD");
+    s.short().current_dir(repo.path());
     assert_eq!(s.execute().await.unwrap(), "main");
 }
 
