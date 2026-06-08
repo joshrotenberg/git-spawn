@@ -25,7 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     let mut buckets: BTreeMap<&'static str, Vec<String>> = BTreeMap::new();
-    for entry in parse_status(&out.stdout)? {
+    for entry in parse_status(&out.stdout_str())? {
         let label = match (entry.index, entry.worktree) {
             (StatusKind::Untracked, _) | (_, StatusKind::Untracked) => "untracked",
             (StatusKind::Added, _) => "staged-added",

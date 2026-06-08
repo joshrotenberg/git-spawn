@@ -28,7 +28,9 @@
 //! - [`RevParseCommand`](rev_parse::RevParseCommand) returns a trimmed
 //!   [`String`] (typically a SHA or a boolean-ish literal).
 //! - [`CatFileCommand`](cat_file::CatFileCommand) returns the object body as
-//!   a [`String`].
+//!   a [`String`] (or raw bytes via
+//!   [`execute_bytes`](cat_file::CatFileCommand::execute_bytes) for binary
+//!   blobs).
 //! - [`HashObjectCommand`](hash_object::HashObjectCommand) returns the computed
 //!   SHA.
 //!
@@ -44,13 +46,14 @@
 //! let repo = Repository::open("/repo")?;
 //! // `--shortstat` isn't on DiffCommand yet — fine, append it raw:
 //! let out = repo.diff().cached().arg("--shortstat").execute().await?;
-//! println!("{}", out.stdout);
+//! println!("{}", out.stdout_str());
 //! # Ok(())
 //! # }
 //! ```
 
 use crate::error::{Error, Result};
 use async_trait::async_trait;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
@@ -330,7 +333,7 @@ impl CommandExecutor {
             }
         })?;
 
-        let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+        let stdout = output.stdout;
         let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
         let exit_code = output.status.code().unwrap_or(-1);
         let success = output.status.success();
@@ -339,7 +342,7 @@ impl CommandExecutor {
             return Err(Error::command_failed(
                 format!("git {}", all_args.join(" ")),
                 exit_code,
-                stdout,
+                String::from_utf8_lossy(&stdout).into_owned(),
                 stderr,
             ));
         }
@@ -373,9 +376,15 @@ impl CommandExecutor {
 /// Captured output from running a git command.
 #[derive(Debug, Clone)]
 pub struct CommandOutput {
-    /// Captured stdout.
-    pub stdout: String,
-    /// Captured stderr.
+    /// Captured stdout as raw bytes.
+    ///
+    /// git output is not guaranteed to be valid UTF-8 — `cat-file` on a binary
+    /// blob, paths under unusual encodings, and `-z`/NUL-delimited formats all
+    /// produce bytes that lossy decoding would corrupt. The bytes are preserved
+    /// verbatim; use [`stdout_str`](Self::stdout_str) for a lossy text view or
+    /// [`stdout_bytes`](Self::stdout_bytes) for the raw slice.
+    pub stdout: Vec<u8>,
+    /// Captured stderr, decoded lossily as UTF-8 (git diagnostics are text).
     pub stderr: String,
     /// Exit code (`-1` if the process was terminated by a signal).
     pub exit_code: i32,
@@ -384,10 +393,22 @@ pub struct CommandOutput {
 }
 
 impl CommandOutput {
-    /// stdout split into lines.
+    /// stdout as a raw byte slice. Use this for binary or non-UTF-8 output.
     #[must_use]
-    pub fn stdout_lines(&self) -> Vec<&str> {
-        self.stdout.lines().collect()
+    pub fn stdout_bytes(&self) -> &[u8] {
+        &self.stdout
+    }
+
+    /// stdout decoded as UTF-8, lossily (invalid sequences become U+FFFD).
+    #[must_use]
+    pub fn stdout_str(&self) -> Cow<'_, str> {
+        String::from_utf8_lossy(&self.stdout)
+    }
+
+    /// stdout decoded lossily and split into lines.
+    #[must_use]
+    pub fn stdout_lines(&self) -> Vec<String> {
+        self.stdout_str().lines().map(ToOwned::to_owned).collect()
     }
 
     /// stderr split into lines.
@@ -396,10 +417,10 @@ impl CommandOutput {
         self.stderr.lines().collect()
     }
 
-    /// stdout with trailing whitespace trimmed.
+    /// stdout decoded lossily with trailing whitespace trimmed.
     #[must_use]
-    pub fn stdout_trimmed(&self) -> &str {
-        self.stdout.trim_end()
+    pub fn stdout_trimmed(&self) -> String {
+        self.stdout_str().trim_end().to_owned()
     }
 }
 
@@ -417,7 +438,7 @@ pub async fn git_version() -> Result<String> {
     let output = CommandExecutor::new()
         .execute_command(vec!["--version".into()])
         .await?;
-    Ok(output.stdout_trimmed().to_string())
+    Ok(output.stdout_trimmed())
 }
 
 #[cfg(test)]
@@ -447,12 +468,13 @@ mod tests {
     #[test]
     fn command_output_helpers() {
         let o = CommandOutput {
-            stdout: "a\nb\n".into(),
+            stdout: b"a\nb\n".to_vec(),
             stderr: String::new(),
             exit_code: 0,
             success: true,
         };
         assert_eq!(o.stdout_lines(), vec!["a", "b"]);
         assert_eq!(o.stdout_trimmed(), "a\nb");
+        assert_eq!(o.stdout_bytes(), b"a\nb\n");
     }
 }

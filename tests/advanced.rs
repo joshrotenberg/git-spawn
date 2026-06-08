@@ -6,30 +6,11 @@ use git_spawn::{
     WorktreeCommand,
 };
 
-fn configure_identity(repo: &Repository) {
-    for (k, v) in [
-        ("user.email", "test@example.com"),
-        ("user.name", "Test"),
-        ("commit.gpgsign", "false"),
-        ("core.autocrlf", "false"),
-    ] {
-        let status = std::process::Command::new("git")
-            .args(["config", "--local", k, v])
-            .current_dir(repo.path())
-            .status()
-            .expect("git config");
-        assert!(status.success());
-    }
-}
+mod common;
+use common::configure_identity;
 
 async fn seed_repo() -> (tempfile::TempDir, Repository) {
-    let tmp = tempfile::tempdir().unwrap();
-    let path = tmp.path().join("repo");
-    std::fs::create_dir_all(&path).unwrap();
-    let mut init = git_spawn::InitCommand::in_directory(&path);
-    init.initial_branch("main").quiet();
-    let repo = init.execute().await.expect("init");
-    configure_identity(&repo);
+    let (tmp, repo) = common::init_repo().await;
     std::fs::write(repo.path().join("a.txt"), "one\n").unwrap();
     repo.add().path("a.txt").execute().await.unwrap();
     repo.commit().message("c1").execute().await.unwrap();
@@ -66,8 +47,8 @@ async fn grep_matches_content() {
         .execute()
         .await
         .unwrap();
-    assert!(out.stdout.contains("greeting.txt"));
-    assert!(out.stdout.contains("hello world"));
+    assert!(out.stdout_str().contains("greeting.txt"));
+    assert!(out.stdout_str().contains("hello world"));
 }
 
 #[tokio::test]
@@ -84,6 +65,58 @@ async fn grep_no_match_errors() {
 }
 
 #[tokio::test]
+async fn grep_no_match_ok_returns_none() {
+    let (_tmp, repo) = seed_repo().await;
+    std::fs::write(repo.path().join("greeting.txt"), "hello world\n").unwrap();
+    repo.add().path("greeting.txt").execute().await.unwrap();
+    repo.commit().message("greet").execute().await.unwrap();
+
+    // No match -> Ok(None), not CommandFailed.
+    let none = repo
+        .grep("nothing-matches-this-xyz")
+        .fixed_strings()
+        .execute_allow_no_match()
+        .await
+        .unwrap();
+    assert!(none.is_none());
+
+    // A match -> Ok(Some(output)).
+    let some = repo
+        .grep("hello")
+        .fixed_strings()
+        .execute_allow_no_match()
+        .await
+        .unwrap()
+        .expect("expected a match");
+    assert!(some.stdout_str().contains("greeting.txt"));
+}
+
+#[tokio::test]
+async fn config_missing_key_opt_returns_none() {
+    let (_tmp, repo) = seed_repo().await;
+
+    // Missing key -> Ok(None).
+    let missing = repo
+        .config(ConfigCommand::get("nope.absent").scope(ConfigScope::Local))
+        .execute_value_opt()
+        .await
+        .unwrap();
+    assert!(missing.is_none());
+
+    // Present key -> Ok(Some(value)).
+    repo.config(ConfigCommand::set("present.key", "yes").scope(ConfigScope::Local))
+        .execute()
+        .await
+        .unwrap();
+    let present = repo
+        .config(ConfigCommand::get("present.key").scope(ConfigScope::Local))
+        .execute_value_opt()
+        .await
+        .unwrap();
+    assert_eq!(present.as_deref(), Some("yes"));
+}
+
+#[tokio::test]
 async fn reflog_shows_initial_commit() {
     let (_tmp, repo) = seed_repo().await;
     let out = repo
@@ -91,7 +124,7 @@ async fn reflog_shows_initial_commit() {
         .execute()
         .await
         .unwrap();
-    assert!(out.stdout.contains("c1"));
+    assert!(out.stdout_str().contains("c1"));
 }
 
 #[tokio::test]
@@ -147,7 +180,7 @@ async fn worktree_add_and_list_and_remove() {
         .execute()
         .await
         .unwrap();
-    assert!(list.stdout.contains("worktree "));
+    assert!(list.stdout_str().contains("worktree "));
 
     repo.worktree(WorktreeCommand::remove(&wt_path).force())
         .execute()
@@ -166,7 +199,7 @@ async fn submodule_status_on_empty_repo() {
         .execute()
         .await
         .unwrap();
-    assert!(out.stdout.trim().is_empty());
+    assert!(out.stdout_str().trim().is_empty());
 }
 
 #[tokio::test]

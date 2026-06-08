@@ -166,7 +166,7 @@ impl<'a> HistoryWalk<'a> {
         }
         cmd.current_dir(self.repo.path());
         let out = cmd.execute().await?;
-        parse_log(&out.stdout)
+        parse_log(&out.stdout_str())
     }
 }
 

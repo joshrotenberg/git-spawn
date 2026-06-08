@@ -5,32 +5,8 @@
 
 use git_spawn::{GitCommand, Repository};
 
-fn configure_identity(repo: &Repository) {
-    for (k, v) in [
-        ("user.email", "test@example.com"),
-        ("user.name", "Test"),
-        ("commit.gpgsign", "false"),
-        ("core.autocrlf", "false"),
-    ] {
-        let status = std::process::Command::new("git")
-            .args(["config", "--local", k, v])
-            .current_dir(repo.path())
-            .status()
-            .expect("git config");
-        assert!(status.success(), "git config {k} failed");
-    }
-}
-
-async fn make_repo() -> (tempfile::TempDir, Repository) {
-    let tmp = tempfile::tempdir().unwrap();
-    let path = tmp.path().join("repo");
-    let mut init = git_spawn::InitCommand::in_directory(&path);
-    init.initial_branch("main").quiet();
-    std::fs::create_dir_all(&path).unwrap();
-    let repo = init.execute().await.expect("init");
-    configure_identity(&repo);
-    (tmp, repo)
-}
+mod common;
+use common::{configure_identity, init_repo as make_repo};
 
 async fn make_initial_commit(repo: &Repository) {
     std::fs::write(repo.path().join("README"), "init").unwrap();

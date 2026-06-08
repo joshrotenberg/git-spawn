@@ -16,7 +16,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let repo = Repository::open(&path)?;
     let out = repo.log().format(LOG_FORMAT).execute().await?;
-    let commits = parse_log(&out.stdout)?;
+    let commits = parse_log(&out.stdout_str())?;
 
     let mut counts: HashMap<(String, String), u32> = HashMap::new();
     for c in &commits {

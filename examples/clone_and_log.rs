@@ -25,7 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .format(LOG_FORMAT)
         .execute()
         .await?;
-    let commits = parse_log(&out.stdout)?;
+    let commits = parse_log(&out.stdout_str())?;
 
     for c in commits {
         println!(

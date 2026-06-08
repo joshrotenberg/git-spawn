@@ -7,7 +7,7 @@
 //! let mut cmd = LsFilesCommand::new();
 //! cmd.current_dir("/repo").cached();
 //! let out = cmd.execute().await?;
-//! for path in out.stdout.lines() {
+//! for path in out.stdout_str().lines() {
 //!     println!("{path}");
 //! }
 //! # Ok(())

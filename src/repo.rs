@@ -36,12 +36,14 @@
 use crate::command::{
     GitCommand, add::AddCommand, bisect::BisectCommand, branch::BranchCommand,
     checkout::CheckoutCommand, cherry_pick::CherryPickCommand, clone::CloneCommand,
-    commit::CommitCommand, config::ConfigCommand, diff::DiffCommand, fetch::FetchCommand,
-    grep::GrepCommand, init::InitCommand, log::LogCommand, merge::MergeCommand, mv::MvCommand,
+    commit::CommitCommand, config::ConfigCommand, describe::DescribeCommand, diff::DiffCommand,
+    fetch::FetchCommand, grep::GrepCommand, init::InitCommand, log::LogCommand,
+    ls_files::LsFilesCommand, ls_tree::LsTreeCommand, merge::MergeCommand, mv::MvCommand,
     pull::PullCommand, push::PushCommand, rebase::RebaseCommand, reflog::ReflogCommand,
-    remote::RemoteCommand, reset::ResetCommand, restore::RestoreCommand, rm::RmCommand,
-    show::ShowCommand, stash::StashCommand, status::StatusCommand, submodule::SubmoduleCommand,
-    switch::SwitchCommand, tag::TagCommand, worktree::WorktreeCommand,
+    remote::RemoteCommand, reset::ResetCommand, restore::RestoreCommand,
+    rev_parse::RevParseCommand, rm::RmCommand, show::ShowCommand, show_ref::ShowRefCommand,
+    stash::StashCommand, status::StatusCommand, submodule::SubmoduleCommand, switch::SwitchCommand,
+    symbolic_ref::SymbolicRefCommand, tag::TagCommand, worktree::WorktreeCommand,
 };
 use crate::error::{Error, Result};
 use std::path::{Path, PathBuf};
@@ -328,6 +330,56 @@ impl Repository {
     /// Build a [`BisectCommand`] scoped to this repository.
     #[must_use]
     pub fn bisect(&self, action: BisectCommand) -> BisectCommand {
+        let mut c = action;
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`RevParseCommand`] scoped to this repository.
+    #[must_use]
+    pub fn rev_parse(&self) -> RevParseCommand {
+        let mut c = RevParseCommand::new();
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`DescribeCommand`] scoped to this repository.
+    #[must_use]
+    pub fn describe(&self) -> DescribeCommand {
+        let mut c = DescribeCommand::new();
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build an [`LsFilesCommand`] scoped to this repository.
+    #[must_use]
+    pub fn ls_files(&self) -> LsFilesCommand {
+        let mut c = LsFilesCommand::new();
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build an [`LsTreeCommand`] for `tree`, scoped to this repository.
+    pub fn ls_tree(&self, tree: impl Into<String>) -> LsTreeCommand {
+        let mut c = LsTreeCommand::new(tree);
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`ShowRefCommand`] scoped to this repository.
+    #[must_use]
+    pub fn show_ref(&self) -> ShowRefCommand {
+        let mut c = ShowRefCommand::new();
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`SymbolicRefCommand`] scoped to this repository.
+    ///
+    /// Construct `action` with [`SymbolicRefCommand::read`],
+    /// [`SymbolicRefCommand::set`], or [`SymbolicRefCommand::delete`].
+    #[must_use]
+    pub fn symbolic_ref(&self, action: SymbolicRefCommand) -> SymbolicRefCommand {
         let mut c = action;
         c.current_dir(&self.path);
         c

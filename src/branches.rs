@@ -95,7 +95,7 @@ impl<'a> BranchOps<'a> {
         let out = cmd.execute().await?;
 
         let mut deleted = Vec::new();
-        for name in out.stdout.lines() {
+        for name in out.stdout_str().lines() {
             if name.is_empty() || name == into || Some(name) == current_name {
                 continue;
             }
@@ -123,7 +123,7 @@ impl<'a> BranchOps<'a> {
             .pattern(pattern.unwrap_or_else(|| "refs/heads/".to_string()));
         cmd.current_dir(self.repo.path());
         let out = cmd.execute().await?;
-        parse_branches(&out.stdout)
+        parse_branches(&out.stdout_str())
     }
 }
 
