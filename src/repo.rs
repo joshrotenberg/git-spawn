@@ -40,9 +40,9 @@ use crate::command::{
     fetch::FetchCommand, grep::GrepCommand, init::InitCommand, log::LogCommand,
     ls_files::LsFilesCommand, ls_tree::LsTreeCommand, merge::MergeCommand, mv::MvCommand,
     pull::PullCommand, push::PushCommand, rebase::RebaseCommand, reflog::ReflogCommand,
-    remote::RemoteCommand, reset::ResetCommand, restore::RestoreCommand, rev_parse::RevParseCommand,
-    rm::RmCommand, show::ShowCommand, show_ref::ShowRefCommand, stash::StashCommand,
-    status::StatusCommand, submodule::SubmoduleCommand, switch::SwitchCommand,
+    remote::RemoteCommand, reset::ResetCommand, restore::RestoreCommand,
+    rev_parse::RevParseCommand, rm::RmCommand, show::ShowCommand, show_ref::ShowRefCommand,
+    stash::StashCommand, status::StatusCommand, submodule::SubmoduleCommand, switch::SwitchCommand,
     symbolic_ref::SymbolicRefCommand, tag::TagCommand, worktree::WorktreeCommand,
 };
 use crate::error::{Error, Result};

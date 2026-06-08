@@ -6,30 +6,11 @@ use git_spawn::{
     WorktreeCommand,
 };
 
-fn configure_identity(repo: &Repository) {
-    for (k, v) in [
-        ("user.email", "test@example.com"),
-        ("user.name", "Test"),
-        ("commit.gpgsign", "false"),
-        ("core.autocrlf", "false"),
-    ] {
-        let status = std::process::Command::new("git")
-            .args(["config", "--local", k, v])
-            .current_dir(repo.path())
-            .status()
-            .expect("git config");
-        assert!(status.success());
-    }
-}
+mod common;
+use common::configure_identity;
 
 async fn seed_repo() -> (tempfile::TempDir, Repository) {
-    let tmp = tempfile::tempdir().unwrap();
-    let path = tmp.path().join("repo");
-    std::fs::create_dir_all(&path).unwrap();
-    let mut init = git_spawn::InitCommand::in_directory(&path);
-    init.initial_branch("main").quiet();
-    let repo = init.execute().await.expect("init");
-    configure_identity(&repo);
+    let (tmp, repo) = common::init_repo().await;
     std::fs::write(repo.path().join("a.txt"), "one\n").unwrap();
     repo.add().path("a.txt").execute().await.unwrap();
     repo.commit().message("c1").execute().await.unwrap();

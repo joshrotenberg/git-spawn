@@ -2,35 +2,8 @@
 
 use git_spawn::{GitCommand, Repository};
 
-fn configure_identity(repo: &Repository) {
-    // Configure a local identity so commits work in CI / clean envs.
-    // `core.autocrlf=false` keeps Windows from rewriting `\n` to `\r\n` on
-    // checkout, which would break byte-for-byte content assertions.
-    for (k, v) in [
-        ("user.email", "test@example.com"),
-        ("user.name", "Test"),
-        ("commit.gpgsign", "false"),
-        ("core.autocrlf", "false"),
-    ] {
-        let status = std::process::Command::new("git")
-            .args(["config", "--local", k, v])
-            .current_dir(repo.path())
-            .status()
-            .expect("git config");
-        assert!(status.success(), "git config {k} failed");
-    }
-}
-
-async fn make_repo() -> (tempfile::TempDir, Repository) {
-    let tmp = tempfile::tempdir().unwrap();
-    let path = tmp.path().join("repo");
-    let mut init = git_spawn::InitCommand::in_directory(&path);
-    init.initial_branch("main").quiet();
-    std::fs::create_dir_all(&path).unwrap();
-    let repo = init.execute().await.expect("init");
-    configure_identity(&repo);
-    (tmp, repo)
-}
+mod common;
+use common::{configure_identity, init_repo as make_repo};
 
 #[tokio::test]
 async fn init_creates_repo() {
@@ -208,7 +181,11 @@ async fn restore_staged_path() {
 
     // After unstaging, `git diff --cached` should be empty.
     let out = repo.diff().cached().execute().await.unwrap();
-    assert!(out.stdout_str().trim().is_empty(), "unexpected: {}", out.stdout_str());
+    assert!(
+        out.stdout_str().trim().is_empty(),
+        "unexpected: {}",
+        out.stdout_str()
+    );
 }
 
 #[tokio::test]
