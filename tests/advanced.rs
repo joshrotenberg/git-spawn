@@ -314,6 +314,37 @@ async fn submodule_status_on_empty_repo() {
 }
 
 #[tokio::test]
+async fn submodule_add_and_status_parses() {
+    use git_spawn::parse::{SubmoduleStatus, parse_submodule_status};
+
+    let (_tmp_sub, sub_repo) = seed_repo().await;
+    let (_tmp_main, main_repo) = seed_repo().await;
+
+    // Local filesystem submodule URLs go through git's "file" transport,
+    // which is disallowed by default since CVE-2022-39253; opt back in for
+    // this trusted, test-local clone.
+    let mut add_cmd = SubmoduleCommand::add(sub_repo.path().display().to_string());
+    add_cmd.path("vendor/sub");
+    main_repo
+        .submodule(add_cmd)
+        .env("GIT_ALLOW_PROTOCOL", "file")
+        .execute()
+        .await
+        .unwrap();
+
+    let out = main_repo
+        .submodule(SubmoduleCommand::status())
+        .execute()
+        .await
+        .unwrap();
+    let entries = parse_submodule_status(&out.stdout_str());
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].path, "vendor/sub");
+    assert_eq!(entries[0].status, SubmoduleStatus::Current);
+    assert!(!entries[0].sha.is_empty());
+}
+
+#[tokio::test]
 async fn bisect_start_and_reset() {
     let (_tmp, repo) = seed_repo().await;
     // Create a second commit so bisect has somewhere to walk.

@@ -21,6 +21,7 @@
 //! - [`reflog`] — parse `git reflog show` output using a fixed format token string
 //! - [`show`] — parse `git show` output into a [`show::ShowResult`]
 //! - [`status`] — parse `git status --porcelain=v1 -z` output
+//! - [`submodule`] — parse `git submodule status` output into [`submodule::SubmoduleEntry`] entries
 
 pub mod cherry_pick;
 pub mod commit;
@@ -34,6 +35,7 @@ pub mod rebase;
 pub mod reflog;
 pub mod show;
 pub mod status;
+pub mod submodule;
 
 pub use cherry_pick::{CherryPickResult, parse_cherry_pick};
 pub use commit::{CommitResult, parse_commit};
@@ -47,3 +49,4 @@ pub use rebase::{RebaseResult, parse_rebase};
 pub use reflog::{REFLOG_FORMAT, ReflogEntry, parse_reflog};
 pub use show::{ShowResult, parse_show};
 pub use status::{StatusEntry, StatusKind, parse_status};
+pub use submodule::{SubmoduleEntry, SubmoduleStatus, parse_submodule_status};
