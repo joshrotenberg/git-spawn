@@ -17,7 +17,9 @@
 //! - [`merge`] — parse `git merge` output into a [`merge::MergeResult`]
 //! - [`pull`] — classify `git pull` output into a [`PullResult`]
 //! - [`reflog`] — parse `git reflog show` output using a fixed format token string
+//! - [`cherry_pick`] — classify `git cherry-pick` output into a [`cherry_pick::CherryPickResult`]
 
+pub mod cherry_pick;
 pub mod commit;
 pub mod diff;
 pub mod log;
@@ -27,6 +29,7 @@ pub mod pull;
 pub mod reflog;
 pub mod status;
 
+pub use cherry_pick::{CherryPickResult, parse_cherry_pick};
 pub use commit::{CommitResult, parse_commit};
 pub use diff::{DiffEntry, DiffKind, parse_diff_name_status};
 pub use log::{CommitEntry, LOG_FORMAT, parse_log};
