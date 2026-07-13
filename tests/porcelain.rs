@@ -32,6 +32,28 @@ async fn add_and_commit() {
 }
 
 #[tokio::test]
+async fn commit_output_parses() {
+    let (_tmp, repo) = make_repo().await;
+    std::fs::write(repo.path().join("hello.txt"), "hi").unwrap();
+    repo.add().path("hello.txt").execute().await.unwrap();
+
+    let out = repo
+        .commit()
+        .message("initial commit")
+        .execute()
+        .await
+        .expect("commit");
+    let result = git_spawn::parse::parse_commit(&out.stdout_str());
+
+    assert_eq!(result.branch, "main");
+    assert!(!result.short_hash.is_empty());
+    assert_eq!(result.subject, "initial commit");
+    assert_eq!(result.files_changed, 1);
+    assert_eq!(result.insertions, 1);
+    assert_eq!(result.deletions, 0);
+}
+
+#[tokio::test]
 async fn status_short_after_write() {
     let (_tmp, repo) = make_repo().await;
     std::fs::write(repo.path().join("a.txt"), "a").unwrap();
