@@ -2,8 +2,8 @@
 
 use git_spawn::command::config::ConfigScope;
 use git_spawn::{
-    BisectCommand, ConfigCommand, GitCommand, ReflogCommand, Repository, SubmoduleCommand,
-    WorktreeCommand,
+    BisectCommand, CommandExecutor, ConfigCommand, GitCommand, ReflogCommand, Repository,
+    SubmoduleCommand, WorktreeCommand,
 };
 
 mod common;
@@ -306,12 +306,23 @@ async fn bisect_converges_on_first_bad_commit() {
         } else {
             // Determine order via merge-base --is-ancestor: current is good
             // if it's an ancestor of (or equal to) the seeded bad commit.
-            let is_ancestor = std::process::Command::new("git")
-                .args(["merge-base", "--is-ancestor", &current, &bad_sha])
-                .current_dir(repo.path())
-                .status()
-                .unwrap()
-                .success();
+            //
+            // Spawned through the crate's tokio-based executor rather than
+            // `std::process::Command`: mixing blocking std child processes
+            // with tokio's async SIGCHLD-driven reaper in the same runtime
+            // races on Unix (tokio's wildcard `waitpid` can reap the std
+            // child first), which showed up as spurious non-convergence on
+            // loaded macOS CI runners.
+            let is_ancestor = CommandExecutor::new()
+                .cwd(repo.path())
+                .execute_command(vec![
+                    "merge-base".to_string(),
+                    "--is-ancestor".to_string(),
+                    current.clone(),
+                    bad_sha.clone(),
+                ])
+                .await
+                .is_ok();
             if is_ancestor {
                 BisectCommand::good(vec![])
             } else {
