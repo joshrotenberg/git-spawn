@@ -288,6 +288,16 @@ fn ls_tree_recurse() {
 }
 
 #[test]
+fn ls_tree_path_uses_separator() {
+    let mut c = LsTreeCommand::new("HEAD");
+    c.path("--suspicious-file");
+    assert_eq!(
+        args_of(&c),
+        vec!["ls-tree", "HEAD", "--", "--suspicious-file"]
+    );
+}
+
+#[test]
 fn cat_file_pretty_print() {
     let c = CatFileCommand::pretty_print("HEAD");
     assert_eq!(args_of(&c), vec!["cat-file", "-p", "HEAD"]);
@@ -297,7 +307,14 @@ fn cat_file_pretty_print() {
 fn hash_object_write() {
     let mut c = HashObjectCommand::new();
     c.write().path("/tmp/blob");
-    assert_eq!(args_of(&c), vec!["hash-object", "-w", "/tmp/blob"]);
+    assert_eq!(args_of(&c), vec!["hash-object", "-w", "--", "/tmp/blob"]);
+}
+
+#[test]
+fn hash_object_path_uses_separator() {
+    let mut c = HashObjectCommand::new();
+    c.path("--suspicious-file");
+    assert_eq!(args_of(&c), vec!["hash-object", "--", "--suspicious-file"]);
 }
 
 #[test]

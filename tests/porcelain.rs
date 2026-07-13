@@ -358,6 +358,91 @@ async fn push_pull_via_local_remote() {
 }
 
 #[tokio::test]
+async fn pull_classifies_fast_forward_and_already_up_to_date() {
+    let tmp = tempfile::tempdir().unwrap();
+
+    // Bare "remote" repo.
+    let bare_path = tmp.path().join("remote.git");
+    std::fs::create_dir_all(&bare_path).unwrap();
+    let mut init = git_spawn::InitCommand::in_directory(&bare_path);
+    init.bare().initial_branch("main").quiet();
+    init.execute().await.unwrap();
+
+    // Working copy A.
+    let a_path = tmp.path().join("a");
+    std::fs::create_dir_all(&a_path).unwrap();
+    let mut init_a = git_spawn::InitCommand::in_directory(&a_path);
+    init_a.initial_branch("main").quiet();
+    let repo_a = init_a.execute().await.unwrap();
+    configure_identity(&repo_a);
+    commit_one(&repo_a, "hello", "hi\n", "init").await;
+
+    repo_a
+        .remote(git_spawn::RemoteCommand::add(
+            "origin",
+            bare_path.display().to_string(),
+        ))
+        .execute()
+        .await
+        .unwrap();
+    repo_a
+        .push()
+        .set_upstream()
+        .remote("origin")
+        .refspec("main")
+        .execute()
+        .await
+        .unwrap();
+
+    // Clone into B.
+    let b_path = tmp.path().join("b");
+    let repo_b = Repository::clone(bare_path.display().to_string(), &b_path)
+        .await
+        .unwrap();
+    configure_identity(&repo_b);
+
+    // B is already current -> `already_up_to_date`.
+    let out = repo_b
+        .pull()
+        .remote("origin")
+        .refspec("main")
+        .ff_only()
+        .execute()
+        .await
+        .unwrap();
+    let combined = format!("{}{}", out.stdout_str(), out.stderr);
+    let result = git_spawn::parse::parse_pull(&combined);
+    assert!(result.already_up_to_date, "expected up to date: {combined}");
+    assert!(!result.fast_forward);
+    assert!(!result.merge_commit);
+    assert!(!result.conflicts);
+
+    // New commit in A, pushed, then pulled into B -> `fast_forward`.
+    commit_one(&repo_a, "another", "x", "second").await;
+    repo_a
+        .push()
+        .remote("origin")
+        .refspec("main")
+        .execute()
+        .await
+        .unwrap();
+
+    let out = repo_b
+        .pull()
+        .remote("origin")
+        .refspec("main")
+        .ff_only()
+        .execute()
+        .await
+        .unwrap();
+    let combined = format!("{}{}", out.stdout_str(), out.stderr);
+    let result = git_spawn::parse::parse_pull(&combined);
+    assert!(result.fast_forward, "expected fast-forward: {combined}");
+    assert!(!result.already_up_to_date);
+    assert!(repo_b.path().join("another").exists());
+}
+
+#[tokio::test]
 async fn timeout_triggers_error() {
     use std::time::Duration;
     // `git log` on an empty repo errors quickly; use a sleep via env to force a
