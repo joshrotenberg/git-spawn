@@ -465,6 +465,58 @@ async fn pull_classifies_fast_forward_and_already_up_to_date() {
 }
 
 #[tokio::test]
+async fn rebase_fast_forward_parses() {
+    let (_tmp, repo) = make_repo().await;
+    commit_one(&repo, "a", "a", "init").await;
+    repo.switch().create("topic").execute().await.unwrap();
+
+    repo.switch().target("main").execute().await.unwrap();
+    commit_one(&repo, "b", "b", "second").await;
+
+    repo.switch().target("topic").execute().await.unwrap();
+    // The `apply` backend prints `Fast-forwarded` for a trivial rebase; the
+    // default `merge` backend instead prints the generic success message
+    // that `RebaseResult` leaves unclassified (only `raw` is meaningful).
+    let mut rebase = repo.rebase();
+    rebase.upstream("main").arg("--apply");
+    let out = rebase.execute().await.unwrap();
+
+    let result = rebase.parse_result(&out).unwrap();
+    assert!(result.fast_forward, "expected fast-forward: {}", result.raw);
+    assert!(!result.up_to_date);
+    assert!(!result.conflicts);
+    assert!(repo.path().join("b").exists());
+}
+
+#[tokio::test]
+async fn rebase_conflict_parses() {
+    let (_tmp, repo) = make_repo().await;
+    commit_one(&repo, "f.txt", "line1\n", "init").await;
+    repo.switch().create("topic").execute().await.unwrap();
+
+    repo.switch().target("main").execute().await.unwrap();
+    commit_one(&repo, "f.txt", "line1\nmain\n", "main change").await;
+
+    repo.switch().target("topic").execute().await.unwrap();
+    commit_one(&repo, "f.txt", "line1\ntopic\n", "topic change").await;
+
+    let mut rebase = repo.rebase();
+    rebase.upstream("main");
+    let err = rebase.execute().await.unwrap_err();
+
+    let combined = match err {
+        git_spawn::Error::CommandFailed { stdout, stderr, .. } => format!("{stdout}{stderr}"),
+        other => panic!("expected CommandFailed, got {other:?}"),
+    };
+    let result = git_spawn::parse::parse_rebase(&combined);
+    assert!(result.conflicts, "expected conflicts: {combined}");
+    assert!(!result.up_to_date);
+    assert!(!result.fast_forward);
+
+    repo.rebase().abort().execute().await.unwrap();
+}
+
+#[tokio::test]
 async fn timeout_triggers_error() {
     use std::time::Duration;
     // `git log` on an empty repo errors quickly; use a sleep via env to force a

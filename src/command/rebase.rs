@@ -113,6 +113,21 @@ impl RebaseCommand {
         self.strategy = Some(s.into());
         self
     }
+
+    /// Classify a completed rebase's [`CommandOutput`] into a
+    /// [`RebaseResult`](crate::parse::RebaseResult).
+    ///
+    /// Returns `None` for `--abort` / `--continue` / `--skip` / `--quit`
+    /// invocations, since their output does not describe a rebase outcome.
+    #[cfg(feature = "parse")]
+    #[must_use]
+    pub fn parse_result(&self, output: &CommandOutput) -> Option<crate::parse::RebaseResult> {
+        if self.abort || self.cont || self.skip || self.quit {
+            return None;
+        }
+        let combined = format!("{}{}", output.stdout_str(), output.stderr);
+        Some(crate::parse::parse_rebase(&combined))
+    }
 }
 
 #[async_trait]
@@ -171,5 +186,68 @@ impl GitCommand for RebaseCommand {
     }
     async fn execute(&self) -> Result<CommandOutput> {
         self.execute_raw().await
+    }
+}
+
+#[cfg(all(test, feature = "parse"))]
+mod tests {
+    use super::*;
+
+    fn output(stdout: &str) -> CommandOutput {
+        CommandOutput {
+            stdout: stdout.as_bytes().to_vec(),
+            stderr: String::new(),
+            exit_code: 0,
+            success: true,
+        }
+    }
+
+    #[test]
+    fn parse_result_up_to_date() {
+        let c = RebaseCommand::new();
+        let result = c
+            .parse_result(&output("Current branch topic is up to date.\n"))
+            .unwrap();
+        assert!(result.up_to_date);
+        assert!(!result.fast_forward);
+        assert!(!result.conflicts);
+    }
+
+    #[test]
+    fn parse_result_fast_forward() {
+        let c = RebaseCommand::new();
+        let result = c
+            .parse_result(&output("Fast-forwarded topic to main.\n"))
+            .unwrap();
+        assert!(result.fast_forward);
+        assert!(!result.up_to_date);
+    }
+
+    #[test]
+    fn parse_result_none_for_abort() {
+        let mut c = RebaseCommand::new();
+        c.abort();
+        assert!(c.parse_result(&output("")).is_none());
+    }
+
+    #[test]
+    fn parse_result_none_for_continue() {
+        let mut c = RebaseCommand::new();
+        c.cont();
+        assert!(c.parse_result(&output("")).is_none());
+    }
+
+    #[test]
+    fn parse_result_none_for_skip() {
+        let mut c = RebaseCommand::new();
+        c.skip();
+        assert!(c.parse_result(&output("")).is_none());
+    }
+
+    #[test]
+    fn parse_result_none_for_quit() {
+        let mut c = RebaseCommand::new();
+        c.quit();
+        assert!(c.parse_result(&output("")).is_none());
     }
 }
