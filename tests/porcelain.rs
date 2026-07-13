@@ -581,6 +581,80 @@ async fn rebase_conflict_parses() {
 }
 
 #[tokio::test]
+async fn full_status_reports_ahead_and_behind() {
+    let tmp = tempfile::tempdir().unwrap();
+
+    // Bare "remote" repo.
+    let bare_path = tmp.path().join("remote.git");
+    std::fs::create_dir_all(&bare_path).unwrap();
+    let mut init = git_spawn::InitCommand::in_directory(&bare_path);
+    init.bare().initial_branch("main").quiet();
+    init.execute().await.unwrap();
+
+    // Working copy A: publish the initial commit.
+    let a_path = tmp.path().join("a");
+    std::fs::create_dir_all(&a_path).unwrap();
+    let mut init_a = git_spawn::InitCommand::in_directory(&a_path);
+    init_a.initial_branch("main").quiet();
+    let repo_a = init_a.execute().await.unwrap();
+    configure_identity(&repo_a);
+    commit_one(&repo_a, "hello", "hi\n", "init").await;
+
+    repo_a
+        .remote(git_spawn::RemoteCommand::add(
+            "origin",
+            bare_path.display().to_string(),
+        ))
+        .execute()
+        .await
+        .unwrap();
+    repo_a
+        .push()
+        .set_upstream()
+        .remote("origin")
+        .refspec("main")
+        .execute()
+        .await
+        .unwrap();
+
+    // Clone into B, which tracks origin/main.
+    let b_path = tmp.path().join("b");
+    let repo_b = Repository::clone(bare_path.display().to_string(), &b_path)
+        .await
+        .unwrap();
+    configure_identity(&repo_b);
+
+    // B diverges locally (ahead by one)...
+    commit_one(&repo_b, "b-only", "b\n", "b-only commit").await;
+
+    // ...while A publishes a commit B hasn't fetched yet (behind by one).
+    commit_one(&repo_a, "a-only", "a\n", "a-only commit").await;
+    repo_a
+        .push()
+        .remote("origin")
+        .refspec("main")
+        .execute()
+        .await
+        .unwrap();
+    repo_b.fetch().remote("origin").execute().await.unwrap();
+
+    let out = repo_b
+        .status()
+        .format(git_spawn::command::status::StatusFormat::PorcelainV1)
+        .branch()
+        .null_terminate()
+        .execute()
+        .await
+        .unwrap();
+    let status = git_spawn::parse::parse_full_status(&out.stdout_str()).unwrap();
+
+    assert_eq!(status.branch.as_deref(), Some("main"));
+    assert_eq!(status.tracking.as_deref(), Some("origin/main"));
+    assert_eq!(status.ahead, 1);
+    assert_eq!(status.behind, 1);
+}
+
+#[tokio::test]
 async fn timeout_triggers_error() {
     use std::time::Duration;
     // `git log` on an empty repo errors quickly; use a sleep via env to force a

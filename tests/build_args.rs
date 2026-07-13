@@ -80,6 +80,18 @@ fn status_porcelain_v2() {
 }
 
 #[test]
+fn status_porcelain_v1_branch_null_terminated() {
+    let mut c = StatusCommand::new();
+    c.format(StatusFormat::PorcelainV1)
+        .branch()
+        .null_terminate();
+    assert_eq!(
+        args_of(&c),
+        vec!["status", "--porcelain=v1", "--branch", "-z"]
+    );
+}
+
+#[test]
 fn log_with_limits_and_paths() {
     let mut c = LogCommand::new();
     c.max_count(5).oneline().revision("HEAD").path("src/lib.rs");
