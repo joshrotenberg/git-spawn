@@ -270,7 +270,7 @@ async fn worktree_add_and_list_and_remove() {
         let mut init = git_spawn::InitCommand::in_directory(&path);
         init.initial_branch("main").quiet();
         let r = init.execute().await.unwrap();
-        configure_identity(&r);
+        configure_identity(&r).await;
         std::fs::write(r.path().join("x"), "x").unwrap();
         r.add().path("x").execute().await.unwrap();
         r.commit().message("init").execute().await.unwrap();

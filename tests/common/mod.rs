@@ -5,24 +5,32 @@
 //! ones from tripping `-D warnings`.
 #![allow(dead_code)]
 
+use git_spawn::command::config::{ConfigCommand, ConfigScope};
 use git_spawn::{GitCommand, Repository};
 
 /// Configure a local identity and deterministic settings so commits work in
 /// clean CI environments. `core.autocrlf=false` keeps Windows from rewriting
 /// `\n` to `\r\n` on checkout, which would break byte-for-byte assertions.
-pub fn configure_identity(repo: &Repository) {
+///
+/// Runs through the crate's tokio-based executor rather than a blocking
+/// `std::process::Command`: these helpers are called from `#[tokio::test]`
+/// async fns, and mixing blocking std child processes with tokio's async
+/// SIGCHLD-driven reaper in the same runtime races on Unix (tokio's wildcard
+/// `waitpid` can reap the std child's exit status first). That race showed up
+/// as spurious `git bisect` non-convergence on loaded macOS CI runners.
+pub async fn configure_identity(repo: &Repository) {
     for (k, v) in [
         ("user.email", "test@example.com"),
         ("user.name", "Test"),
         ("commit.gpgsign", "false"),
         ("core.autocrlf", "false"),
     ] {
-        let status = std::process::Command::new("git")
-            .args(["config", "--local", k, v])
-            .current_dir(repo.path())
-            .status()
-            .expect("git config");
-        assert!(status.success(), "git config {k} failed");
+        let mut cmd = ConfigCommand::set(k, v);
+        cmd.scope(ConfigScope::Local);
+        cmd.current_dir(repo.path());
+        cmd.execute()
+            .await
+            .unwrap_or_else(|e| panic!("git config {k} failed: {e}"));
     }
 }
 
@@ -36,6 +44,6 @@ pub async fn init_repo() -> (tempfile::TempDir, Repository) {
     let mut init = git_spawn::InitCommand::in_directory(&path);
     init.initial_branch("main").quiet();
     let repo = init.execute().await.expect("init");
-    configure_identity(&repo);
+    configure_identity(&repo).await;
     (tmp, repo)
 }

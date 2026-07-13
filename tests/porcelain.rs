@@ -394,7 +394,7 @@ async fn push_pull_via_local_remote() {
     let mut init_a = git_spawn::InitCommand::in_directory(&a_path);
     init_a.initial_branch("main").quiet();
     let repo_a = init_a.execute().await.unwrap();
-    configure_identity(&repo_a);
+    configure_identity(&repo_a).await;
     commit_one(&repo_a, "hello", "hi\n", "init").await;
 
     repo_a
@@ -431,7 +431,7 @@ async fn push_pull_via_local_remote() {
         .await
         .unwrap();
 
-    configure_identity(&repo_b);
+    configure_identity(&repo_b).await;
     repo_b
         .pull()
         .remote("origin")
@@ -460,7 +460,7 @@ async fn pull_classifies_fast_forward_and_already_up_to_date() {
     let mut init_a = git_spawn::InitCommand::in_directory(&a_path);
     init_a.initial_branch("main").quiet();
     let repo_a = init_a.execute().await.unwrap();
-    configure_identity(&repo_a);
+    configure_identity(&repo_a).await;
     commit_one(&repo_a, "hello", "hi\n", "init").await;
 
     repo_a
@@ -485,7 +485,7 @@ async fn pull_classifies_fast_forward_and_already_up_to_date() {
     let repo_b = Repository::clone(bare_path.display().to_string(), &b_path)
         .await
         .unwrap();
-    configure_identity(&repo_b);
+    configure_identity(&repo_b).await;
 
     // B is already current -> `already_up_to_date`.
     let out = repo_b
