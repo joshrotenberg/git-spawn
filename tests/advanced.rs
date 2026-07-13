@@ -134,6 +134,32 @@ async fn reflog_shows_initial_commit() {
 }
 
 #[tokio::test]
+async fn reflog_show_parses_typed_entries() {
+    use git_spawn::parse::{REFLOG_FORMAT, parse_reflog};
+
+    let (_tmp, repo) = seed_repo().await;
+    std::fs::write(repo.path().join("b.txt"), "two\n").unwrap();
+    repo.add().path("b.txt").execute().await.unwrap();
+    repo.commit().message("c2").execute().await.unwrap();
+
+    let out = repo
+        .reflog(ReflogCommand::show())
+        .format(REFLOG_FORMAT)
+        .execute()
+        .await
+        .unwrap();
+
+    let entries = parse_reflog(&out.stdout_str()).unwrap();
+    assert_eq!(entries.len(), 2);
+    assert_eq!(entries[0].selector, "HEAD@{0}");
+    assert_eq!(entries[0].action, "commit");
+    assert_eq!(entries[0].message, "c2");
+    assert_eq!(entries[1].selector, "HEAD@{1}");
+    assert!(!entries[0].hash.is_empty());
+    assert!(!entries[0].abbreviated_hash.is_empty());
+}
+
+#[tokio::test]
 async fn cherry_pick_brings_commit_forward() {
     let (_tmp, repo) = seed_repo().await;
 
