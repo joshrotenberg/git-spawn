@@ -5,7 +5,7 @@
 //! alongside) the diff. To make the header parseable, callers that want a
 //! [`ShowResult`] should run `show` with `--format=<LOG_FORMAT>` (see
 //! [`crate::parse::LOG_FORMAT`]) so the header can be decoded with the same
-//! logic that backs [`parse_log`](crate::parse::parse_log). A caller-supplied
+//! logic that backs [`parse_log`]. A caller-supplied
 //! custom `--format` (or `--oneline`) can't be parsed generically, so in that
 //! case only `raw` is populated.
 
