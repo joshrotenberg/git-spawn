@@ -134,6 +134,29 @@ fn submodule_update_init_recursive() {
 }
 
 #[test]
+fn submodule_status_plain() {
+    let c = SubmoduleCommand::status();
+    assert_eq!(args_of(&c), vec!["submodule", "status"]);
+}
+
+#[test]
+fn submodule_status_cached_recursive_with_paths() {
+    let mut c = SubmoduleCommand::status();
+    c.cached().recursive().restrict_path("vendor/lib");
+    assert_eq!(
+        args_of(&c),
+        vec![
+            "submodule",
+            "status",
+            "--cached",
+            "--recursive",
+            "--",
+            "vendor/lib",
+        ]
+    );
+}
+
+#[test]
 fn bisect_start_with_bad_and_good() {
     let mut c = BisectCommand::start();
     c.bad_commit("HEAD").good_commit("v1.0");
