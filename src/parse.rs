@@ -9,32 +9,41 @@
 //!
 //! # Modules
 //!
-//! - [`status`] — parse `git status --porcelain=v1 -z` output
-//! - [`log`] — parse `git log` output using a fixed format token string
-//! - [`diff`] — parse `git diff --name-status -z` output
-//! - [`notes`] — parse `git notes list` output into `(note, object)` pairs
+//! - [`cherry_pick`] — classify `git cherry-pick` output into a [`cherry_pick::CherryPickResult`]
 //! - [`commit`] — parse `git commit` output into a [`commit::CommitResult`]
+//! - [`diff`] — parse `git diff --name-status -z` output
+//! - [`log`] — parse `git log` output using a fixed format token string
+//! - [`ls_tree`] — parse `git ls-tree` output into [`ls_tree::TreeEntry`] entries
 //! - [`merge`] — parse `git merge` output into a [`merge::MergeResult`]
+//! - [`notes`] — parse `git notes list` output into `(note, object)` pairs
 //! - [`pull`] — classify `git pull` output into a [`PullResult`]
 //! - [`rebase`] — classify `git rebase` output into a [`RebaseResult`]
 //! - [`reflog`] — parse `git reflog show` output using a fixed format token string
+//! - [`show`] — parse `git show` output into a [`show::ShowResult`]
+//! - [`status`] — parse `git status --porcelain=v1 -z` output
 
+pub mod cherry_pick;
 pub mod commit;
 pub mod diff;
 pub mod log;
+pub mod ls_tree;
 pub mod merge;
 pub mod notes;
 pub mod pull;
 pub mod rebase;
 pub mod reflog;
+pub mod show;
 pub mod status;
 
+pub use cherry_pick::{CherryPickResult, parse_cherry_pick};
 pub use commit::{CommitResult, parse_commit};
 pub use diff::{DiffEntry, DiffKind, parse_diff_name_status};
 pub use log::{CommitEntry, LOG_FORMAT, parse_log};
+pub use ls_tree::{TreeEntry, TreeObjectType, parse_ls_tree, parse_ls_tree_name_only};
 pub use merge::{MergeResult, parse_merge};
 pub use notes::parse_notes_list;
 pub use pull::{PullResult, parse_pull};
 pub use rebase::{RebaseResult, parse_rebase};
 pub use reflog::{REFLOG_FORMAT, ReflogEntry, parse_reflog};
+pub use show::{ShowResult, parse_show};
 pub use status::{StatusEntry, StatusKind, parse_status};

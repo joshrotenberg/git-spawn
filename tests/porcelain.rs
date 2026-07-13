@@ -111,6 +111,70 @@ async fn diff_shows_unstaged_change() {
 }
 
 #[tokio::test]
+async fn show_result_parses_default_format() {
+    let (_tmp, repo) = make_repo().await;
+    std::fs::write(repo.path().join("f"), "one\n").unwrap();
+    repo.add().path("f").execute().await.unwrap();
+    repo.commit().message("init").execute().await.unwrap();
+
+    std::fs::write(repo.path().join("f"), "one\ntwo\n").unwrap();
+    repo.add().path("f").execute().await.unwrap();
+    repo.commit().message("add a line").execute().await.unwrap();
+
+    let result = repo.show().object("HEAD").show_result().await.unwrap();
+    let commit = result.commit.expect("commit header");
+    assert_eq!(commit.subject, "add a line");
+    assert!(!commit.sha.is_empty());
+    assert!(result.diff.contains("+two"));
+    assert!(result.stat.is_none());
+    assert!(result.raw.contains("add a line"));
+}
+
+#[tokio::test]
+async fn show_result_with_stat_populates_stat_not_diff() {
+    let (_tmp, repo) = make_repo().await;
+    std::fs::write(repo.path().join("f"), "one\n").unwrap();
+    repo.add().path("f").execute().await.unwrap();
+    repo.commit().message("init").execute().await.unwrap();
+
+    std::fs::write(repo.path().join("f"), "one\ntwo\n").unwrap();
+    repo.add().path("f").execute().await.unwrap();
+    repo.commit().message("add a line").execute().await.unwrap();
+
+    let result = repo
+        .show()
+        .object("HEAD")
+        .stat()
+        .show_result()
+        .await
+        .unwrap();
+    assert_eq!(result.commit.expect("commit header").subject, "add a line");
+    assert!(result.diff.is_empty());
+    let stat = result.stat.expect("stat block");
+    assert!(stat.contains("1 file changed"));
+}
+
+#[tokio::test]
+async fn show_result_with_custom_format_only_populates_raw() {
+    let (_tmp, repo) = make_repo().await;
+    std::fs::write(repo.path().join("f"), "one\n").unwrap();
+    repo.add().path("f").execute().await.unwrap();
+    repo.commit().message("init").execute().await.unwrap();
+
+    let result = repo
+        .show()
+        .object("HEAD")
+        .format("%s")
+        .show_result()
+        .await
+        .unwrap();
+    assert!(result.commit.is_none());
+    assert!(result.diff.is_empty());
+    assert!(result.stat.is_none());
+    assert!(result.raw.starts_with("init"));
+}
+
+#[tokio::test]
 async fn escape_hatch_arg_works() {
     let (_tmp, repo) = make_repo().await;
     let out = repo.status().arg("--porcelain=v2").execute().await.unwrap();
