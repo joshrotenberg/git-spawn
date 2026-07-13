@@ -14,15 +14,18 @@
 //! - [`diff`] — parse `git diff --name-status -z` output
 //! - [`notes`] — parse `git notes list` output into `(note, object)` pairs
 //! - [`commit`] — parse `git commit` output into a [`commit::CommitResult`]
+//! - [`pull`] — classify `git pull` output into a [`PullResult`]
 
 pub mod commit;
 pub mod diff;
 pub mod log;
 pub mod notes;
+pub mod pull;
 pub mod status;
 
 pub use commit::{CommitResult, parse_commit};
 pub use diff::{DiffEntry, DiffKind, parse_diff_name_status};
 pub use log::{CommitEntry, LOG_FORMAT, parse_log};
 pub use notes::parse_notes_list;
+pub use pull::{PullResult, parse_pull};
 pub use status::{StatusEntry, StatusKind, parse_status};
