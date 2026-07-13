@@ -97,7 +97,7 @@
 //!
 //! | Flag       | Default | Purpose                                            |
 //! |------------|:-------:|----------------------------------------------------|
-//! | `parse`    |   on    | Typed parsers for status/log/diff output           |
+//! | `parse`    |   on    | Typed parsers for status/log/diff/pull output      |
 //! | `serde`    |   off   | `Serialize`/`Deserialize` on parsed types          |
 //! | `workflow` |   off   | Higher-level helpers ([`info`], [`branches`], [`tags`], [`history`], [`workflow`]) |
 //!
