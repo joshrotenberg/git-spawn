@@ -97,6 +97,20 @@ fn diff_cached_numstat() {
 }
 
 #[test]
+fn diff_numstat_null_terminated() {
+    let mut c = DiffCommand::new();
+    c.numstat().null_terminate();
+    assert_eq!(args_of(&c), vec!["diff", "--numstat", "-z"]);
+}
+
+#[test]
+fn diff_stat() {
+    let mut c = DiffCommand::new();
+    c.stat();
+    assert_eq!(args_of(&c), vec!["diff", "--stat"]);
+}
+
+#[test]
 fn show_object_with_format() {
     let mut c = ShowCommand::new();
     c.object("HEAD").format("%H %s").no_patch();
