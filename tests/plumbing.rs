@@ -205,7 +205,10 @@ async fn symbolic_ref_short_returns_branch_name() {
 mod parsers {
     use super::*;
     use git_spawn::command::status::StatusFormat;
-    use git_spawn::parse::{DiffKind, StatusKind, parse_diff_name_status, parse_log, parse_status};
+    use git_spawn::parse::{
+        DiffKind, StatusKind, TreeObjectType, parse_diff_name_status, parse_log, parse_ls_tree,
+        parse_ls_tree_name_only, parse_status,
+    };
 
     #[tokio::test]
     async fn status_parser_captures_modification() {
@@ -279,5 +282,34 @@ mod parsers {
                 .iter()
                 .any(|e| e.kind == DiffKind::Added && e.path == "brand-new.txt")
         );
+    }
+
+    #[tokio::test]
+    async fn ls_tree_parser_reads_structured_entries() {
+        let (_tmp, repo) = make_repo_with_commit().await;
+        std::fs::create_dir(repo.path().join("subdir")).unwrap();
+        std::fs::write(repo.path().join("subdir/nested.txt"), "nested\n").unwrap();
+        repo.add().all().execute().await.unwrap();
+        repo.commit().message("add subdir").execute().await.unwrap();
+
+        let out = repo.ls_tree("HEAD").execute().await.unwrap();
+        let entries = parse_ls_tree(&out.stdout_str()).unwrap();
+
+        let hello = entries.iter().find(|e| e.path == "hello.txt").unwrap();
+        assert_eq!(hello.object_type, TreeObjectType::Blob);
+        assert_eq!(hello.mode, "100644");
+        assert_eq!(hello.sha.len(), 40);
+        assert_eq!(hello.size, None);
+
+        let subdir = entries.iter().find(|e| e.path == "subdir").unwrap();
+        assert_eq!(subdir.object_type, TreeObjectType::Tree);
+    }
+
+    #[tokio::test]
+    async fn ls_tree_parser_reads_name_only_output() {
+        let (_tmp, repo) = make_repo_with_commit().await;
+        let out = repo.ls_tree("HEAD").name_only().execute().await.unwrap();
+        let paths = parse_ls_tree_name_only(&out.stdout_str());
+        assert_eq!(paths, vec!["hello.txt"]);
     }
 }
