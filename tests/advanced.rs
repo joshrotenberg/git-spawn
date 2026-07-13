@@ -258,3 +258,81 @@ async fn bisect_start_and_reset() {
         .await
         .unwrap();
 }
+
+#[tokio::test]
+async fn bisect_converges_on_first_bad_commit() {
+    use git_spawn::parse::BisectStatus;
+
+    let (_tmp, repo) = seed_repo().await;
+
+    // Seed a short history where c3 is the first bad commit.
+    std::fs::write(repo.path().join("a.txt"), "two\n").unwrap();
+    repo.add().path("a.txt").execute().await.unwrap();
+    repo.commit().message("c2").execute().await.unwrap();
+
+    std::fs::write(repo.path().join("a.txt"), "three\n").unwrap();
+    repo.add().path("a.txt").execute().await.unwrap();
+    repo.commit().message("c3").execute().await.unwrap();
+
+    let bad_sha = {
+        let mut rp = git_spawn::RevParseCommand::new();
+        rp.current_dir(repo.path()).arg_str("HEAD");
+        rp.execute().await.unwrap()
+    };
+
+    std::fs::write(repo.path().join("a.txt"), "four\n").unwrap();
+    repo.add().path("a.txt").execute().await.unwrap();
+    repo.commit().message("c4").execute().await.unwrap();
+
+    repo.bisect(BisectCommand::start())
+        .bad_commit("HEAD")
+        .good_commit("HEAD~3")
+        .execute()
+        .await
+        .unwrap();
+
+    // Narrow down: HEAD~3 is c1 (good), HEAD is c4 (bad). Bisect checks out
+    // c2 or c3 next; mark it bad or good based on whether it's before or at
+    // the seeded bad commit, until the session converges.
+    let mut found: Option<git_spawn::parse::BisectResult> = None;
+    for _ in 0..10 {
+        let current = {
+            let mut rp = git_spawn::RevParseCommand::new();
+            rp.current_dir(repo.path()).arg_str("HEAD");
+            rp.execute().await.unwrap()
+        };
+        let mark = if current == bad_sha {
+            BisectCommand::bad(None)
+        } else {
+            // Determine order via merge-base --is-ancestor: current is good
+            // if it's an ancestor of (or equal to) the seeded bad commit.
+            let is_ancestor = std::process::Command::new("git")
+                .args(["merge-base", "--is-ancestor", &current, &bad_sha])
+                .current_dir(repo.path())
+                .status()
+                .unwrap()
+                .success();
+            if is_ancestor {
+                BisectCommand::good(vec![])
+            } else {
+                BisectCommand::bad(None)
+            }
+        };
+        let cmd = repo.bisect(mark);
+        let output = cmd.execute().await.unwrap();
+        let result = cmd.parse_result(&output).unwrap();
+        if result.status == BisectStatus::Found {
+            found = Some(result);
+            break;
+        }
+    }
+
+    let result = found.expect("bisect should converge within 10 steps");
+    assert_eq!(result.status, BisectStatus::Found);
+    assert_eq!(result.bad_commit.as_deref(), Some(bad_sha.as_str()));
+
+    repo.bisect(BisectCommand::reset(None))
+        .execute()
+        .await
+        .unwrap();
+}

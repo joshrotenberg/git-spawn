@@ -18,7 +18,9 @@
 //! - [`pull`] — classify `git pull` output into a [`PullResult`]
 //! - [`ls_tree`] — parse `git ls-tree` output into [`ls_tree::TreeEntry`] entries
 //! - [`reflog`] — parse `git reflog show` output using a fixed format token string
+//! - [`bisect`] — classify `git bisect` output into a [`bisect::BisectResult`]
 
+pub mod bisect;
 pub mod commit;
 pub mod diff;
 pub mod log;
@@ -29,6 +31,7 @@ pub mod pull;
 pub mod reflog;
 pub mod status;
 
+pub use bisect::{BisectResult, BisectStatus, parse_bisect};
 pub use commit::{CommitResult, parse_commit};
 pub use diff::{DiffEntry, DiffKind, parse_diff_name_status};
 pub use log::{CommitEntry, LOG_FORMAT, parse_log};
