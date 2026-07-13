@@ -177,6 +177,39 @@ async fn merge_ff_branch() {
 }
 
 #[tokio::test]
+async fn merge_ff_branch_parses_fast_forward() {
+    let (_tmp, repo) = make_repo().await;
+    commit_one(&repo, "a", "a", "init").await;
+    repo.switch().create("topic").execute().await.unwrap();
+    commit_one(&repo, "b", "b", "second").await;
+
+    repo.switch().target("main").execute().await.unwrap();
+    let mut merge = repo.merge();
+    merge.commit_ref("topic").ff_only();
+    let out = merge.execute().await.unwrap();
+
+    let result = merge.parse_result(&out).unwrap();
+    assert!(result.fast_forward);
+    assert!(!result.already_up_to_date);
+}
+
+#[tokio::test]
+async fn merge_up_to_date_parses_already_up_to_date() {
+    let (_tmp, repo) = make_repo().await;
+    commit_one(&repo, "a", "a", "init").await;
+    repo.switch().create("topic").execute().await.unwrap();
+    repo.switch().target("main").execute().await.unwrap();
+
+    let mut merge = repo.merge();
+    merge.commit_ref("topic");
+    let out = merge.execute().await.unwrap();
+
+    let result = merge.parse_result(&out).unwrap();
+    assert!(!result.fast_forward);
+    assert!(result.already_up_to_date);
+}
+
+#[tokio::test]
 async fn reset_hard_reverts_working_tree() {
     let (_tmp, repo) = make_repo().await;
     commit_one(&repo, "f", "one\n", "init").await;
