@@ -13,13 +13,16 @@
 //! - [`log`] — parse `git log` output using a fixed format token string
 //! - [`diff`] — parse `git diff --name-status -z` output
 //! - [`notes`] — parse `git notes list` output into `(note, object)` pairs
+//! - [`merge`] — parse `git merge` output into a [`merge::MergeResult`]
 
 pub mod diff;
 pub mod log;
+pub mod merge;
 pub mod notes;
 pub mod status;
 
 pub use diff::{DiffEntry, DiffKind, parse_diff_name_status};
 pub use log::{CommitEntry, LOG_FORMAT, parse_log};
+pub use merge::{MergeResult, parse_merge};
 pub use notes::parse_notes_list;
 pub use status::{StatusEntry, StatusKind, parse_status};
