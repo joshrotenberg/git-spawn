@@ -69,6 +69,20 @@ fn reflog_show_head() {
 }
 
 #[test]
+fn reflog_show_with_format() {
+    let mut c = ReflogCommand::show();
+    c.format(git_spawn::parse::REFLOG_FORMAT);
+    assert_eq!(
+        args_of(&c),
+        vec![
+            "reflog",
+            "show",
+            &format!("--format={}", git_spawn::parse::REFLOG_FORMAT),
+        ]
+    );
+}
+
+#[test]
 fn worktree_add_with_branch() {
     let mut c = WorktreeCommand::add("/tmp/wt");
     c.new_branch("feature");
