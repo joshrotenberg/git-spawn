@@ -105,6 +105,21 @@ impl MergeCommand {
         self.quiet = true;
         self
     }
+
+    /// Classify a completed merge's [`CommandOutput`] into a
+    /// [`MergeResult`](crate::parse::MergeResult).
+    ///
+    /// Returns `None` for `--abort` / `--continue` invocations, since their
+    /// output matches neither the fast-forward nor the already-up-to-date
+    /// substring and does not describe a merge outcome.
+    #[cfg(feature = "parse")]
+    #[must_use]
+    pub fn parse_result(&self, output: &CommandOutput) -> Option<crate::parse::MergeResult> {
+        if self.abort || self.cont {
+            return None;
+        }
+        Some(crate::parse::parse_merge(&output.stdout_str()))
+    }
 }
 
 #[async_trait]
@@ -156,5 +171,51 @@ impl GitCommand for MergeCommand {
     }
     async fn execute(&self) -> Result<CommandOutput> {
         self.execute_raw().await
+    }
+}
+
+#[cfg(all(test, feature = "parse"))]
+mod tests {
+    use super::*;
+
+    fn output(stdout: &str) -> CommandOutput {
+        CommandOutput {
+            stdout: stdout.as_bytes().to_vec(),
+            stderr: String::new(),
+            exit_code: 0,
+            success: true,
+        }
+    }
+
+    #[test]
+    fn parse_result_fast_forward() {
+        let c = MergeCommand::new();
+        let result = c
+            .parse_result(&output("Updating a1b2c3..d4e5f6\nFast-forward\n"))
+            .unwrap();
+        assert!(result.fast_forward);
+        assert!(!result.already_up_to_date);
+    }
+
+    #[test]
+    fn parse_result_already_up_to_date() {
+        let c = MergeCommand::new();
+        let result = c.parse_result(&output("Already up to date.\n")).unwrap();
+        assert!(!result.fast_forward);
+        assert!(result.already_up_to_date);
+    }
+
+    #[test]
+    fn parse_result_none_for_abort() {
+        let mut c = MergeCommand::new();
+        c.abort();
+        assert!(c.parse_result(&output("")).is_none());
+    }
+
+    #[test]
+    fn parse_result_none_for_continue() {
+        let mut c = MergeCommand::new();
+        c.cont();
+        assert!(c.parse_result(&output("")).is_none());
     }
 }
