@@ -57,6 +57,27 @@ impl ShowCommand {
         self.no_patch = true;
         self
     }
+
+    /// Run `show` and parse the result into a
+    /// [`ShowResult`](crate::parse::ShowResult).
+    ///
+    /// When no custom `--format` was set, this substitutes git-spawn's
+    /// internal commit-header format (the one backing
+    /// [`parse_log`](crate::parse::parse_log)) so the header can be decoded,
+    /// then re-splits the output into `commit`/`diff`/`stat`. A custom
+    /// `--format` set via [`format`](Self::format) is passed through
+    /// untouched and only `raw` is populated. Raw [`execute`](GitCommand::execute)
+    /// is unaffected either way and keeps returning [`CommandOutput`].
+    #[cfg(feature = "parse")]
+    pub async fn show_result(&self) -> Result<crate::parse::ShowResult> {
+        let custom_format = self.format.is_some();
+        let mut cmd = self.clone();
+        if !custom_format {
+            cmd.format = Some(crate::parse::LOG_FORMAT.to_string());
+        }
+        let output = cmd.execute_raw().await?;
+        crate::parse::parse_show(&output.stdout_str(), self.stat, custom_format)
+    }
 }
 
 #[async_trait]

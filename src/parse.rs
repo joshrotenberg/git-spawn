@@ -19,6 +19,7 @@
 //! - [`ls_tree`] — parse `git ls-tree` output into [`ls_tree::TreeEntry`] entries
 //! - [`reflog`] — parse `git reflog show` output using a fixed format token string
 //! - [`cherry_pick`] — classify `git cherry-pick` output into a [`cherry_pick::CherryPickResult`]
+//! - [`show`] — parse `git show` output into a [`show::ShowResult`]
 
 pub mod cherry_pick;
 pub mod commit;
@@ -29,6 +30,7 @@ pub mod merge;
 pub mod notes;
 pub mod pull;
 pub mod reflog;
+pub mod show;
 pub mod status;
 
 pub use cherry_pick::{CherryPickResult, parse_cherry_pick};
@@ -40,4 +42,5 @@ pub use merge::{MergeResult, parse_merge};
 pub use notes::parse_notes_list;
 pub use pull::{PullResult, parse_pull};
 pub use reflog::{REFLOG_FORMAT, ReflogEntry, parse_reflog};
+pub use show::{ShowResult, parse_show};
 pub use status::{StatusEntry, StatusKind, parse_status};
