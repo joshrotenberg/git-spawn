@@ -72,7 +72,10 @@ impl GitCommand for HashObjectCommand {
         if self.stdin {
             args.push("--stdin".into());
         }
-        args.extend(self.paths.iter().map(|p| p.display().to_string()));
+        if !self.paths.is_empty() {
+            args.push("--".into());
+            args.extend(self.paths.iter().map(|p| p.display().to_string()));
+        }
         args
     }
 

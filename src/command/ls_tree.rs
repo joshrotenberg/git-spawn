@@ -111,7 +111,10 @@ impl GitCommand for LsTreeCommand {
         if let Some(t) = &self.tree {
             args.push(t.clone());
         }
-        args.extend(self.paths.iter().cloned());
+        if !self.paths.is_empty() {
+            args.push("--".into());
+            args.extend(self.paths.iter().cloned());
+        }
         args
     }
     async fn execute(&self) -> Result<CommandOutput> {
