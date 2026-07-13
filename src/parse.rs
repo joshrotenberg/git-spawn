@@ -20,7 +20,8 @@
 //! - [`rebase`] — classify `git rebase` output into a [`RebaseResult`]
 //! - [`reflog`] — parse `git reflog show` output using a fixed format token string
 //! - [`show`] — parse `git show` output into a [`show::ShowResult`]
-//! - [`status`] — parse `git status --porcelain=v1 -z` output
+//! - [`status`] — parse `git status --porcelain=v1 -z` output, with
+//!   [`status::parse_full_status`] additionally covering the `-b` branch header
 //! - [`submodule`] — parse `git submodule status` output into [`submodule::SubmoduleEntry`] entries
 
 pub mod cherry_pick;
@@ -51,5 +52,5 @@ pub use pull::{PullResult, parse_pull};
 pub use rebase::{RebaseResult, parse_rebase};
 pub use reflog::{REFLOG_FORMAT, ReflogEntry, parse_reflog};
 pub use show::{ShowResult, parse_show};
-pub use status::{StatusEntry, StatusKind, parse_status};
+pub use status::{Status, StatusEntry, StatusKind, parse_full_status, parse_status};
 pub use submodule::{SubmoduleEntry, SubmoduleStatus, parse_submodule_status};

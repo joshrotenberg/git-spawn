@@ -8,6 +8,23 @@
 
 use crate::error::{Error, Result};
 
+/// Parsed result of `git status --porcelain=v1 -b -z`: the branch/tracking
+/// header plus the per-entry changes.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Status {
+    /// Current branch name. `None` for a detached `HEAD`.
+    pub branch: Option<String>,
+    /// Upstream tracking ref (e.g. `origin/main`), if one is configured.
+    pub tracking: Option<String>,
+    /// Commits the local branch is ahead of `tracking` by.
+    pub ahead: u32,
+    /// Commits the local branch is behind `tracking` by.
+    pub behind: u32,
+    /// Per-file entries.
+    pub entries: Vec<StatusEntry>,
+}
+
 /// A single parsed entry from `git status --porcelain=v1 -z`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -85,8 +102,102 @@ impl From<char> for StatusKind {
 /// assert_eq!(entries[2].index, StatusKind::Untracked);
 /// ```
 pub fn parse_status(input: &str) -> Result<Vec<StatusEntry>> {
-    let mut out = Vec::new();
     let mut iter = input.split('\0').peekable();
+    parse_entries(&mut iter)
+}
+
+/// Parse the output of `git status --porcelain=v1 -b -z`, splitting the
+/// leading `## ` branch header from the per-entry records.
+///
+/// # Errors
+/// Returns [`Error::ParseError`] if an entry is malformed.
+///
+/// # Example
+/// ```
+/// use git_spawn::parse::parse_full_status;
+///
+/// let input = "## main...origin/main [ahead 1, behind 2]\0 M a.txt\0";
+/// let status = parse_full_status(input).unwrap();
+/// assert_eq!(status.branch.as_deref(), Some("main"));
+/// assert_eq!(status.tracking.as_deref(), Some("origin/main"));
+/// assert_eq!(status.ahead, 1);
+/// assert_eq!(status.behind, 2);
+/// assert_eq!(status.entries.len(), 1);
+/// ```
+pub fn parse_full_status(input: &str) -> Result<Status> {
+    let mut iter = input.split('\0').peekable();
+    let (branch, tracking, ahead, behind) = match iter.peek() {
+        Some(first) if first.starts_with("##") => {
+            let header = iter.next().expect("peeked Some");
+            parse_branch_header(header)
+        }
+        _ => (None, None, 0, 0),
+    };
+    let entries = parse_entries(&mut iter)?;
+    Ok(Status {
+        branch,
+        tracking,
+        ahead,
+        behind,
+        entries,
+    })
+}
+
+/// Parse a `## ...` branch header record into `(branch, tracking, ahead, behind)`.
+///
+/// Handles the no-upstream (`## main`), tracking (`## main...origin/main`),
+/// ahead/behind (`## main...origin/main [ahead 1, behind 2]`), no-commits
+/// (`## No commits yet on main`), and detached-head (`## HEAD (no branch)`)
+/// forms. The detached-head form has no branch name to report, so it yields
+/// `branch = None`; the no-commits form still has one, so it is preserved.
+fn parse_branch_header(header: &str) -> (Option<String>, Option<String>, u32, u32) {
+    let rest = header.trim_start_matches("##").trim();
+
+    if rest == "HEAD (no branch)" {
+        return (None, None, 0, 0);
+    }
+
+    const NO_COMMITS_PREFIX: &str = "No commits yet on ";
+    if let Some(branch) = rest.strip_prefix(NO_COMMITS_PREFIX) {
+        return (Some(branch.to_string()), None, 0, 0);
+    }
+
+    let (main_part, bracket_part) = match rest.find(" [") {
+        Some(idx) => (&rest[..idx], Some(rest[idx + 2..].trim_end_matches(']'))),
+        None => (rest, None),
+    };
+
+    let (branch, tracking) = match main_part.find("...") {
+        Some(pos) => (
+            Some(main_part[..pos].to_string()),
+            Some(main_part[pos + 3..].to_string()),
+        ),
+        None => (Some(main_part.to_string()), None),
+    };
+
+    let mut ahead = 0;
+    let mut behind = 0;
+    if let Some(bracket) = bracket_part {
+        for part in bracket.split(',') {
+            let part = part.trim();
+            if let Some(n) = part.strip_prefix("ahead ") {
+                ahead = n.trim().parse().unwrap_or(0);
+            } else if let Some(n) = part.strip_prefix("behind ") {
+                behind = n.trim().parse().unwrap_or(0);
+            }
+        }
+    }
+
+    (branch, tracking, ahead, behind)
+}
+
+/// Shared entry-parsing loop used by both [`parse_status`] and
+/// [`parse_full_status`], operating on an already-positioned iterator (i.e.
+/// past any `## ` header record).
+fn parse_entries(
+    iter: &mut std::iter::Peekable<std::str::Split<'_, char>>,
+) -> Result<Vec<StatusEntry>> {
+    let mut out = Vec::new();
     while let Some(record) = iter.next() {
         if record.is_empty() {
             continue;
@@ -189,5 +300,85 @@ mod tests {
     fn malformed_missing_space_errors() {
         let input = "MMa.txt\0";
         assert!(parse_status(input).is_err());
+    }
+
+    #[test]
+    fn full_status_no_upstream() {
+        let input = "## main\0 M a.txt\0";
+        let status = parse_full_status(input).unwrap();
+        assert_eq!(status.branch.as_deref(), Some("main"));
+        assert_eq!(status.tracking, None);
+        assert_eq!(status.ahead, 0);
+        assert_eq!(status.behind, 0);
+        assert_eq!(status.entries.len(), 1);
+    }
+
+    #[test]
+    fn full_status_upstream_only() {
+        let input = "## main...origin/main\0";
+        let status = parse_full_status(input).unwrap();
+        assert_eq!(status.branch.as_deref(), Some("main"));
+        assert_eq!(status.tracking.as_deref(), Some("origin/main"));
+        assert_eq!(status.ahead, 0);
+        assert_eq!(status.behind, 0);
+        assert!(status.entries.is_empty());
+    }
+
+    #[test]
+    fn full_status_ahead_only() {
+        let input = "## main...origin/main [ahead 3]\0";
+        let status = parse_full_status(input).unwrap();
+        assert_eq!(status.tracking.as_deref(), Some("origin/main"));
+        assert_eq!(status.ahead, 3);
+        assert_eq!(status.behind, 0);
+    }
+
+    #[test]
+    fn full_status_behind_only() {
+        let input = "## main...origin/main [behind 5]\0";
+        let status = parse_full_status(input).unwrap();
+        assert_eq!(status.ahead, 0);
+        assert_eq!(status.behind, 5);
+    }
+
+    #[test]
+    fn full_status_ahead_and_behind() {
+        let input = "## main...origin/main [ahead 1, behind 2]\0 M a.txt\0?? b.txt\0";
+        let status = parse_full_status(input).unwrap();
+        assert_eq!(status.branch.as_deref(), Some("main"));
+        assert_eq!(status.tracking.as_deref(), Some("origin/main"));
+        assert_eq!(status.ahead, 1);
+        assert_eq!(status.behind, 2);
+        assert_eq!(status.entries.len(), 2);
+    }
+
+    #[test]
+    fn full_status_no_commits_yet() {
+        let input = "## No commits yet on main\0?? a.txt\0";
+        let status = parse_full_status(input).unwrap();
+        assert_eq!(status.branch.as_deref(), Some("main"));
+        assert_eq!(status.tracking, None);
+        assert_eq!(status.ahead, 0);
+        assert_eq!(status.behind, 0);
+        assert_eq!(status.entries.len(), 1);
+    }
+
+    #[test]
+    fn full_status_detached_head() {
+        let input = "## HEAD (no branch)\0 M a.txt\0";
+        let status = parse_full_status(input).unwrap();
+        assert_eq!(status.branch, None);
+        assert_eq!(status.tracking, None);
+        assert_eq!(status.ahead, 0);
+        assert_eq!(status.behind, 0);
+        assert_eq!(status.entries.len(), 1);
+    }
+
+    #[test]
+    fn full_status_no_header_still_parses_entries() {
+        let input = " M a.txt\0";
+        let status = parse_full_status(input).unwrap();
+        assert_eq!(status.branch, None);
+        assert_eq!(status.entries.len(), 1);
     }
 }
