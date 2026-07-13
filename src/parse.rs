@@ -17,6 +17,7 @@
 //! - [`merge`] — parse `git merge` output into a [`merge::MergeResult`]
 //! - [`pull`] — classify `git pull` output into a [`PullResult`]
 //! - [`reflog`] — parse `git reflog show` output using a fixed format token string
+//! - [`show`] — parse `git show` output into a [`show::ShowResult`]
 
 pub mod commit;
 pub mod diff;
@@ -25,6 +26,7 @@ pub mod merge;
 pub mod notes;
 pub mod pull;
 pub mod reflog;
+pub mod show;
 pub mod status;
 
 pub use commit::{CommitResult, parse_commit};
@@ -34,4 +36,5 @@ pub use merge::{MergeResult, parse_merge};
 pub use notes::parse_notes_list;
 pub use pull::{PullResult, parse_pull};
 pub use reflog::{REFLOG_FORMAT, ReflogEntry, parse_reflog};
+pub use show::{ShowResult, parse_show};
 pub use status::{StatusEntry, StatusKind, parse_status};
