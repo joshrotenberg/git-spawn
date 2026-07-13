@@ -185,6 +185,83 @@ async fn cherry_pick_brings_commit_forward() {
 }
 
 #[tokio::test]
+async fn cherry_pick_clean_pick_parses_no_conflict() {
+    let (_tmp, repo) = seed_repo().await;
+
+    repo.switch().create("topic").execute().await.unwrap();
+    std::fs::write(repo.path().join("b.txt"), "two\n").unwrap();
+    repo.add().path("b.txt").execute().await.unwrap();
+    repo.commit().message("add-b").execute().await.unwrap();
+
+    let topic_head = {
+        let mut rp = git_spawn::RevParseCommand::new();
+        rp.current_dir(repo.path()).arg_str("HEAD");
+        rp.execute().await.unwrap()
+    };
+
+    repo.switch().target("main").execute().await.unwrap();
+    let mut pick = repo.cherry_pick();
+    pick.commit(&topic_head);
+    let out = pick.execute().await.unwrap();
+
+    let result = pick.parse_result(&out).unwrap();
+    assert!(!result.conflicts, "unexpected conflict: {}", result.raw);
+}
+
+#[tokio::test]
+async fn cherry_pick_conflict_is_detected() {
+    let (_tmp, repo) = seed_repo().await;
+
+    // Diverge a.txt on a topic branch...
+    repo.switch().create("topic").execute().await.unwrap();
+    std::fs::write(repo.path().join("a.txt"), "topic-change\n").unwrap();
+    repo.add().path("a.txt").execute().await.unwrap();
+    repo.commit()
+        .message("change-a-on-topic")
+        .execute()
+        .await
+        .unwrap();
+
+    let topic_head = {
+        let mut rp = git_spawn::RevParseCommand::new();
+        rp.current_dir(repo.path()).arg_str("HEAD");
+        rp.execute().await.unwrap()
+    };
+
+    // ...and on main, so picking topic's commit onto main conflicts.
+    repo.switch().target("main").execute().await.unwrap();
+    std::fs::write(repo.path().join("a.txt"), "main-change\n").unwrap();
+    repo.add().path("a.txt").execute().await.unwrap();
+    repo.commit()
+        .message("change-a-on-main")
+        .execute()
+        .await
+        .unwrap();
+
+    let mut pick = repo.cherry_pick();
+    pick.commit(&topic_head);
+    let err = pick.execute().await.unwrap_err();
+    let (stdout, stderr, exit_code) = match err {
+        git_spawn::Error::CommandFailed {
+            stdout,
+            stderr,
+            exit_code,
+            ..
+        } => (stdout, stderr, exit_code),
+        other => panic!("expected CommandFailed, got: {other:?}"),
+    };
+    let out = git_spawn::CommandOutput {
+        stdout: stdout.into_bytes(),
+        stderr,
+        exit_code,
+        success: false,
+    };
+
+    let result = pick.parse_result(&out).unwrap();
+    assert!(result.conflicts, "expected conflict: {}", result.raw);
+}
+
+#[tokio::test]
 async fn worktree_add_and_list_and_remove() {
     let tmp = tempfile::tempdir().unwrap();
     let (_tmp, repo) = {
