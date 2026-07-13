@@ -121,6 +121,20 @@ impl CherryPickCommand {
         self.keep_redundant = true;
         self
     }
+
+    /// Classify a cherry-pick's [`CommandOutput`] into a
+    /// [`CherryPickResult`](crate::parse::CherryPickResult).
+    ///
+    /// Returns `None` for `--abort` / `--continue` / `--skip` / `--quit`
+    /// invocations, since their output does not describe a pick outcome.
+    #[cfg(feature = "parse")]
+    #[must_use]
+    pub fn parse_result(&self, output: &CommandOutput) -> Option<crate::parse::CherryPickResult> {
+        if self.abort || self.cont || self.skip || self.quit {
+            return None;
+        }
+        Some(crate::parse::parse_cherry_pick(output))
+    }
 }
 
 #[async_trait]
@@ -180,5 +194,65 @@ impl GitCommand for CherryPickCommand {
     }
     async fn execute(&self) -> Result<CommandOutput> {
         self.execute_raw().await
+    }
+}
+
+#[cfg(all(test, feature = "parse"))]
+mod tests {
+    use super::*;
+
+    fn output(stdout: &str) -> CommandOutput {
+        CommandOutput {
+            stdout: stdout.as_bytes().to_vec(),
+            stderr: String::new(),
+            exit_code: 0,
+            success: true,
+        }
+    }
+
+    #[test]
+    fn parse_result_clean_pick() {
+        let c = CherryPickCommand::new();
+        let result = c
+            .parse_result(&output("[main abc1234] add feature\n"))
+            .unwrap();
+        assert!(!result.conflicts);
+    }
+
+    #[test]
+    fn parse_result_conflict() {
+        let c = CherryPickCommand::new();
+        let result = c
+            .parse_result(&output("CONFLICT (content): Merge conflict in a.txt\n"))
+            .unwrap();
+        assert!(result.conflicts);
+    }
+
+    #[test]
+    fn parse_result_none_for_abort() {
+        let mut c = CherryPickCommand::new();
+        c.abort();
+        assert!(c.parse_result(&output("")).is_none());
+    }
+
+    #[test]
+    fn parse_result_none_for_continue() {
+        let mut c = CherryPickCommand::new();
+        c.cont();
+        assert!(c.parse_result(&output("")).is_none());
+    }
+
+    #[test]
+    fn parse_result_none_for_skip() {
+        let mut c = CherryPickCommand::new();
+        c.skip();
+        assert!(c.parse_result(&output("")).is_none());
+    }
+
+    #[test]
+    fn parse_result_none_for_quit() {
+        let mut c = CherryPickCommand::new();
+        c.quit();
+        assert!(c.parse_result(&output("")).is_none());
     }
 }
