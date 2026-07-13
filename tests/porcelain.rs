@@ -111,6 +111,57 @@ async fn diff_shows_unstaged_change() {
 }
 
 #[tokio::test]
+async fn diff_numstat_parses_totals_and_binary() {
+    let (_tmp, repo) = make_repo().await;
+    std::fs::write(repo.path().join("f.txt"), "one\n").unwrap();
+    std::fs::write(repo.path().join("bin.dat"), [0u8, 1, 2]).unwrap();
+    repo.add().path(".").execute().await.unwrap();
+    repo.commit().message("init").execute().await.unwrap();
+
+    std::fs::write(repo.path().join("f.txt"), "one\ntwo\n").unwrap();
+    std::fs::write(repo.path().join("bin.dat"), [0u8, 1, 2, 3, 4]).unwrap();
+
+    let out = repo
+        .diff()
+        .numstat()
+        .null_terminate()
+        .execute()
+        .await
+        .unwrap();
+    let diff = git_spawn::parse::parse_diff_numstat(&out.stdout_str()).unwrap();
+
+    assert_eq!(diff.files.len(), 2);
+    let f_txt = diff.files.iter().find(|f| f.path == "f.txt").unwrap();
+    assert_eq!(f_txt.insertions, 1);
+    assert_eq!(f_txt.deletions, 0);
+    assert!(!f_txt.binary);
+    let bin_dat = diff.files.iter().find(|f| f.path == "bin.dat").unwrap();
+    assert!(bin_dat.binary);
+    assert_eq!(diff.total_insertions, 1);
+    assert_eq!(diff.total_deletions, 0);
+}
+
+#[tokio::test]
+async fn diff_stat_parses_totals_and_rename() {
+    let (_tmp, repo) = make_repo().await;
+    std::fs::write(repo.path().join("old.txt"), "one\ntwo\nthree\n").unwrap();
+    repo.add().path(".").execute().await.unwrap();
+    repo.commit().message("init").execute().await.unwrap();
+
+    std::fs::write(repo.path().join("old.txt"), "one\nTWO\nthree\nfour\n").unwrap();
+    repo.add().path(".").execute().await.unwrap();
+    repo.mv("old.txt", "new.txt").execute().await.unwrap();
+
+    let out = repo.diff().cached().stat().execute().await.unwrap();
+    let diff = git_spawn::parse::parse_diff_stat(&out.stdout_str()).unwrap();
+
+    assert_eq!(diff.files.len(), 1);
+    assert_eq!(diff.files[0].path, "new.txt");
+    assert_eq!(diff.total_insertions, 2);
+    assert_eq!(diff.total_deletions, 1);
+}
+
+#[tokio::test]
 async fn show_result_parses_default_format() {
     let (_tmp, repo) = make_repo().await;
     std::fs::write(repo.path().join("f"), "one\n").unwrap();

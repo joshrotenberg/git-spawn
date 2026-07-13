@@ -11,7 +11,7 @@
 //!
 //! - [`cherry_pick`] — classify `git cherry-pick` output into a [`cherry_pick::CherryPickResult`]
 //! - [`commit`] — parse `git commit` output into a [`commit::CommitResult`]
-//! - [`diff`] — parse `git diff --name-status -z` output
+//! - [`diff`] — parse `git diff --name-status -z`, `--numstat -z`, and `--stat` output
 //! - [`log`] — parse `git log` output using a fixed format token string
 //! - [`ls_tree`] — parse `git ls-tree` output into [`ls_tree::TreeEntry`] entries
 //! - [`merge`] — parse `git merge` output into a [`merge::MergeResult`]
@@ -39,7 +39,10 @@ pub mod submodule;
 
 pub use cherry_pick::{CherryPickResult, parse_cherry_pick};
 pub use commit::{CommitResult, parse_commit};
-pub use diff::{DiffEntry, DiffKind, parse_diff_name_status};
+pub use diff::{
+    Diff, DiffEntry, DiffFile, DiffKind, parse_diff_name_status, parse_diff_numstat,
+    parse_diff_stat,
+};
 pub use log::{CommitEntry, LOG_FORMAT, parse_log};
 pub use ls_tree::{TreeEntry, TreeObjectType, parse_ls_tree, parse_ls_tree_name_only};
 pub use merge::{MergeResult, parse_merge};
