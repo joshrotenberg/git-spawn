@@ -1,7 +1,7 @@
 //! Parser for `git bisect` output.
 //!
 //! `git bisect` has no stable machine-readable output format, so this parser
-//! classifies stdout via substring and line matching, mirroring the
+//! classifies its output via substring and line matching, mirroring the
 //! `Git.BisectResult` struct from the `git_wrapper_ex` Elixir project. A
 //! bisect session moves through phases as commits are marked good/bad:
 //!
@@ -49,7 +49,12 @@ pub struct BisectResult {
     pub raw: String,
 }
 
-/// Classify the stdout of a `git bisect` invocation into a [`BisectResult`].
+/// Classify the output of a `git bisect` invocation into a [`BisectResult`].
+///
+/// Pass the command's stdout and stderr together: git writes bisect progress
+/// to stderr on recent versions and to stdout on older ones.
+/// [`BisectCommand::parse_result`](crate::command::bisect::BisectCommand::parse_result)
+/// concatenates both streams before calling this.
 ///
 /// Matching is substring and line based, so it is sensitive to git's locale
 /// and to output-wording changes across versions.

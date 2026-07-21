@@ -140,13 +140,19 @@ impl BisectCommand {
     /// Returns `None` for `Run` and `Log` actions, since their output is not
     /// a single step result: `Run` drives an entire session automatically
     /// and `Log` dumps the whole history rather than reporting one step.
+    ///
+    /// Classification reads stdout and stderr together: `git bisect` writes
+    /// its progress lines (`Bisecting: …` and `… is the first bad commit`) to
+    /// stderr on recent git versions and to stdout on older ones, so relying
+    /// on either stream alone misses the markers on some platforms.
     #[cfg(feature = "parse")]
     #[must_use]
     pub fn parse_result(&self, output: &CommandOutput) -> Option<crate::parse::BisectResult> {
         if matches!(self.action, BisectAction::Run(_) | BisectAction::Log) {
             return None;
         }
-        Some(crate::parse::parse_bisect(&output.stdout_str()))
+        let combined = format!("{}\n{}", output.stdout_str(), output.stderr);
+        Some(crate::parse::parse_bisect(&combined))
     }
 }
 
@@ -239,6 +245,38 @@ mod tests {
             .unwrap();
         assert_eq!(result.status, crate::parse::BisectStatus::Found);
         assert_eq!(result.bad_commit.as_deref(), Some("abc1234"));
+    }
+
+    #[test]
+    fn parse_result_found_from_stderr() {
+        // Recent git writes bisect progress to stderr, so classification must
+        // see markers there even when stdout is empty.
+        let c = BisectCommand::good(vec![]);
+        let out = CommandOutput {
+            stdout: Vec::new(),
+            stderr: "abc1234 is the first bad commit\n".to_string(),
+            exit_code: 0,
+            success: true,
+        };
+        let result = c.parse_result(&out).unwrap();
+        assert_eq!(result.status, crate::parse::BisectStatus::Found);
+        assert_eq!(result.bad_commit.as_deref(), Some("abc1234"));
+    }
+
+    #[test]
+    fn parse_result_stepping_from_stderr() {
+        let c = BisectCommand::bad(None);
+        let out = CommandOutput {
+            stdout: Vec::new(),
+            stderr:
+                "Bisecting: 1 revision left to test after this (roughly 1 step)\n[abc1234] c3\n"
+                    .to_string(),
+            exit_code: 0,
+            success: true,
+        };
+        let result = c.parse_result(&out).unwrap();
+        assert_eq!(result.status, crate::parse::BisectStatus::Stepping);
+        assert_eq!(result.current_commit.as_deref(), Some("abc1234"));
     }
 
     #[test]
