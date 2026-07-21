@@ -4,7 +4,7 @@
 //! handle. [`list`](StashOps::list) parses `git stash list` into typed
 //! [`StashEntry`] values; the mutating helpers ([`push`](StashOps::push),
 //! [`pop`](StashOps::pop), and friends) delegate to the raw
-//! [`StashCommand`](crate::command::stash::StashCommand).
+//! [`StashCommand`].
 //!
 //! ```no_run
 //! # async fn ex() -> git_spawn::Result<()> {
