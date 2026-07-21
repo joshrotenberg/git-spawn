@@ -2,8 +2,8 @@
 
 use git_spawn::command::config::ConfigScope;
 use git_spawn::{
-    BisectCommand, ConfigCommand, GitCommand, ReflogCommand, Repository, SubmoduleCommand,
-    WorktreeCommand,
+    BisectCommand, CommandExecutor, ConfigCommand, GitCommand, ReflogCommand, Repository,
+    SubmoduleCommand, WorktreeCommand,
 };
 
 mod common;
@@ -270,7 +270,7 @@ async fn worktree_add_and_list_and_remove() {
         let mut init = git_spawn::InitCommand::in_directory(&path);
         init.initial_branch("main").quiet();
         let r = init.execute().await.unwrap();
-        configure_identity(&r);
+        configure_identity(&r).await;
         std::fs::write(r.path().join("x"), "x").unwrap();
         r.add().path("x").execute().await.unwrap();
         r.commit().message("init").execute().await.unwrap();
@@ -361,6 +361,95 @@ async fn bisect_start_and_reset() {
         .unwrap();
 
     // Reset cleans up the bisect state.
+    repo.bisect(BisectCommand::reset(None))
+        .execute()
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn bisect_converges_on_first_bad_commit() {
+    use git_spawn::parse::BisectStatus;
+
+    let (_tmp, repo) = seed_repo().await;
+
+    // Seed a short history where c3 is the first bad commit.
+    std::fs::write(repo.path().join("a.txt"), "two\n").unwrap();
+    repo.add().path("a.txt").execute().await.unwrap();
+    repo.commit().message("c2").execute().await.unwrap();
+
+    std::fs::write(repo.path().join("a.txt"), "three\n").unwrap();
+    repo.add().path("a.txt").execute().await.unwrap();
+    repo.commit().message("c3").execute().await.unwrap();
+
+    let bad_sha = {
+        let mut rp = git_spawn::RevParseCommand::new();
+        rp.current_dir(repo.path()).arg_str("HEAD");
+        rp.execute().await.unwrap()
+    };
+
+    std::fs::write(repo.path().join("a.txt"), "four\n").unwrap();
+    repo.add().path("a.txt").execute().await.unwrap();
+    repo.commit().message("c4").execute().await.unwrap();
+
+    repo.bisect(BisectCommand::start())
+        .bad_commit("HEAD")
+        .good_commit("HEAD~3")
+        .execute()
+        .await
+        .unwrap();
+
+    // Narrow down: HEAD~3 is c1 (good), HEAD is c4 (bad). Bisect checks out
+    // c2 or c3 next; mark it bad or good based on whether it's before or at
+    // the seeded bad commit, until the session converges.
+    let mut found: Option<git_spawn::parse::BisectResult> = None;
+    for _ in 0..10 {
+        let current = {
+            let mut rp = git_spawn::RevParseCommand::new();
+            rp.current_dir(repo.path()).arg_str("HEAD");
+            rp.execute().await.unwrap()
+        };
+        let mark = if current == bad_sha {
+            BisectCommand::bad(None)
+        } else {
+            // Determine order via merge-base --is-ancestor: current is good
+            // if it's an ancestor of (or equal to) the seeded bad commit.
+            //
+            // Spawned through the crate's tokio-based executor rather than
+            // `std::process::Command`: mixing blocking std child processes
+            // with tokio's async SIGCHLD-driven reaper in the same runtime
+            // races on Unix (tokio's wildcard `waitpid` can reap the std
+            // child first), which showed up as spurious non-convergence on
+            // loaded macOS CI runners.
+            let is_ancestor = CommandExecutor::new()
+                .cwd(repo.path())
+                .execute_command(vec![
+                    "merge-base".to_string(),
+                    "--is-ancestor".to_string(),
+                    current.clone(),
+                    bad_sha.clone(),
+                ])
+                .await
+                .is_ok();
+            if is_ancestor {
+                BisectCommand::good(vec![])
+            } else {
+                BisectCommand::bad(None)
+            }
+        };
+        let cmd = repo.bisect(mark);
+        let output = cmd.execute().await.unwrap();
+        let result = cmd.parse_result(&output).unwrap();
+        if result.status == BisectStatus::Found {
+            found = Some(result);
+            break;
+        }
+    }
+
+    let result = found.expect("bisect should converge within 10 steps");
+    assert_eq!(result.status, BisectStatus::Found);
+    assert_eq!(result.bad_commit.as_deref(), Some(bad_sha.as_str()));
+
     repo.bisect(BisectCommand::reset(None))
         .execute()
         .await

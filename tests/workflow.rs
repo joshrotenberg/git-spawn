@@ -70,7 +70,7 @@ async fn info_with_upstream_and_default_branch() {
     let repo = Repository::clone(bare.display().to_string(), &work)
         .await
         .expect("clone");
-    configure_identity(&repo);
+    configure_identity(&repo).await;
 
     make_initial_commit(&repo).await;
     repo.push()
@@ -478,7 +478,7 @@ async fn workflow_sync_rebases_against_upstream() {
     let repo = Repository::clone(bare.display().to_string(), &work)
         .await
         .expect("clone");
-    configure_identity(&repo);
+    configure_identity(&repo).await;
     make_initial_commit(&repo).await;
     repo.push()
         .remote("origin")

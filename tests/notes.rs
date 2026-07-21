@@ -168,7 +168,7 @@ async fn notes_push_fetch_between_repos() {
     let mut init_a = git_spawn::InitCommand::in_directory(&a_path);
     init_a.initial_branch("main").quiet();
     let repo_a = init_a.execute().await.unwrap();
-    common::configure_identity(&repo_a);
+    common::configure_identity(&repo_a).await;
     std::fs::write(repo_a.path().join("f.txt"), "hi\n").unwrap();
     repo_a.add().path("f.txt").execute().await.unwrap();
     repo_a.commit().message("init").execute().await.unwrap();
@@ -212,7 +212,7 @@ async fn notes_push_fetch_between_repos() {
     let repo_b = Repository::clone(bare_path.display().to_string(), &b_path)
         .await
         .unwrap();
-    common::configure_identity(&repo_b);
+    common::configure_identity(&repo_b).await;
     repo_b
         .fetch()
         .remote("origin")

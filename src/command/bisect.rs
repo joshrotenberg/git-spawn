@@ -133,6 +133,27 @@ impl BisectCommand {
             action: BisectAction::Run(command.into_iter().map(Into::into).collect()),
         }
     }
+
+    /// Classify a completed step's [`CommandOutput`] into a
+    /// [`BisectResult`](crate::parse::BisectResult).
+    ///
+    /// Returns `None` for `Run` and `Log` actions, since their output is not
+    /// a single step result: `Run` drives an entire session automatically
+    /// and `Log` dumps the whole history rather than reporting one step.
+    ///
+    /// Classification reads stdout and stderr together: `git bisect` writes
+    /// its progress lines (`Bisecting: …` and `… is the first bad commit`) to
+    /// stderr on recent git versions and to stdout on older ones, so relying
+    /// on either stream alone misses the markers on some platforms.
+    #[cfg(feature = "parse")]
+    #[must_use]
+    pub fn parse_result(&self, output: &CommandOutput) -> Option<crate::parse::BisectResult> {
+        if matches!(self.action, BisectAction::Run(_) | BisectAction::Log) {
+            return None;
+        }
+        let combined = format!("{}\n{}", output.stdout_str(), output.stderr);
+        Some(crate::parse::parse_bisect(&combined))
+    }
 }
 
 #[async_trait]
@@ -188,5 +209,85 @@ impl GitCommand for BisectCommand {
     }
     async fn execute(&self) -> Result<CommandOutput> {
         self.execute_raw().await
+    }
+}
+
+#[cfg(all(test, feature = "parse"))]
+mod tests {
+    use super::*;
+
+    fn output(stdout: &str) -> CommandOutput {
+        CommandOutput {
+            stdout: stdout.as_bytes().to_vec(),
+            stderr: String::new(),
+            exit_code: 0,
+            success: true,
+        }
+    }
+
+    #[test]
+    fn parse_result_stepping() {
+        let c = BisectCommand::bad(None);
+        let result = c
+            .parse_result(&output(
+                "Bisecting: 1 revision left to test after this (roughly 1 step)\n[abc1234] c3\n",
+            ))
+            .unwrap();
+        assert_eq!(result.status, crate::parse::BisectStatus::Stepping);
+        assert_eq!(result.current_commit.as_deref(), Some("abc1234"));
+    }
+
+    #[test]
+    fn parse_result_found() {
+        let c = BisectCommand::good(vec![]);
+        let result = c
+            .parse_result(&output("abc1234 is the first bad commit\n"))
+            .unwrap();
+        assert_eq!(result.status, crate::parse::BisectStatus::Found);
+        assert_eq!(result.bad_commit.as_deref(), Some("abc1234"));
+    }
+
+    #[test]
+    fn parse_result_found_from_stderr() {
+        // Recent git writes bisect progress to stderr, so classification must
+        // see markers there even when stdout is empty.
+        let c = BisectCommand::good(vec![]);
+        let out = CommandOutput {
+            stdout: Vec::new(),
+            stderr: "abc1234 is the first bad commit\n".to_string(),
+            exit_code: 0,
+            success: true,
+        };
+        let result = c.parse_result(&out).unwrap();
+        assert_eq!(result.status, crate::parse::BisectStatus::Found);
+        assert_eq!(result.bad_commit.as_deref(), Some("abc1234"));
+    }
+
+    #[test]
+    fn parse_result_stepping_from_stderr() {
+        let c = BisectCommand::bad(None);
+        let out = CommandOutput {
+            stdout: Vec::new(),
+            stderr:
+                "Bisecting: 1 revision left to test after this (roughly 1 step)\n[abc1234] c3\n"
+                    .to_string(),
+            exit_code: 0,
+            success: true,
+        };
+        let result = c.parse_result(&out).unwrap();
+        assert_eq!(result.status, crate::parse::BisectStatus::Stepping);
+        assert_eq!(result.current_commit.as_deref(), Some("abc1234"));
+    }
+
+    #[test]
+    fn parse_result_none_for_run() {
+        let c = BisectCommand::run(vec!["cargo".to_string(), "test".to_string()]);
+        assert!(c.parse_result(&output("")).is_none());
+    }
+
+    #[test]
+    fn parse_result_none_for_log() {
+        let c = BisectCommand::log();
+        assert!(c.parse_result(&output("")).is_none());
     }
 }
