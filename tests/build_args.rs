@@ -80,6 +80,18 @@ fn status_porcelain_v2() {
 }
 
 #[test]
+fn status_porcelain_v1_branch_null_terminated() {
+    let mut c = StatusCommand::new();
+    c.format(StatusFormat::PorcelainV1)
+        .branch()
+        .null_terminate();
+    assert_eq!(
+        args_of(&c),
+        vec!["status", "--porcelain=v1", "--branch", "-z"]
+    );
+}
+
+#[test]
 fn log_with_limits_and_paths() {
     let mut c = LogCommand::new();
     c.max_count(5).oneline().revision("HEAD").path("src/lib.rs");
@@ -94,6 +106,20 @@ fn diff_cached_numstat() {
     let mut c = DiffCommand::new();
     c.cached().numstat();
     assert_eq!(args_of(&c), vec!["diff", "--cached", "--numstat"]);
+}
+
+#[test]
+fn diff_numstat_null_terminated() {
+    let mut c = DiffCommand::new();
+    c.numstat().null_terminate();
+    assert_eq!(args_of(&c), vec!["diff", "--numstat", "-z"]);
+}
+
+#[test]
+fn diff_stat() {
+    let mut c = DiffCommand::new();
+    c.stat();
+    assert_eq!(args_of(&c), vec!["diff", "--stat"]);
 }
 
 #[test]

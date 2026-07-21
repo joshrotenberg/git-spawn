@@ -23,6 +23,8 @@ pub struct DiffCommand {
     pub numstat: bool,
     /// `--no-color`.
     pub no_color: bool,
+    /// NUL-terminate entries (`-z`).
+    pub null_terminate: bool,
     /// `--unified=N`.
     pub unified: Option<u32>,
     /// Revisions (e.g. `HEAD~1 HEAD`).
@@ -80,6 +82,15 @@ impl DiffCommand {
         self
     }
 
+    /// NUL-separate entries (`-z`). Required to safely parse
+    /// [`--numstat`](Self::numstat) or [`--name-status`](Self::name_status)
+    /// output via [`parse_diff_numstat`](crate::parse::parse_diff_numstat) or
+    /// [`parse_diff_name_status`](crate::parse::parse_diff_name_status).
+    pub fn null_terminate(&mut self) -> &mut Self {
+        self.null_terminate = true;
+        self
+    }
+
     /// Context lines (`-U`).
     pub fn unified(&mut self, n: u32) -> &mut Self {
         self.unified = Some(n);
@@ -133,6 +144,9 @@ impl GitCommand for DiffCommand {
         }
         if self.no_color {
             args.push("--no-color".into());
+        }
+        if self.null_terminate {
+            args.push("-z".into());
         }
         if let Some(u) = self.unified {
             args.push(format!("--unified={u}"));

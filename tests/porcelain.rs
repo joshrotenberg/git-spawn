@@ -111,6 +111,57 @@ async fn diff_shows_unstaged_change() {
 }
 
 #[tokio::test]
+async fn diff_numstat_parses_totals_and_binary() {
+    let (_tmp, repo) = make_repo().await;
+    std::fs::write(repo.path().join("f.txt"), "one\n").unwrap();
+    std::fs::write(repo.path().join("bin.dat"), [0u8, 1, 2]).unwrap();
+    repo.add().path(".").execute().await.unwrap();
+    repo.commit().message("init").execute().await.unwrap();
+
+    std::fs::write(repo.path().join("f.txt"), "one\ntwo\n").unwrap();
+    std::fs::write(repo.path().join("bin.dat"), [0u8, 1, 2, 3, 4]).unwrap();
+
+    let out = repo
+        .diff()
+        .numstat()
+        .null_terminate()
+        .execute()
+        .await
+        .unwrap();
+    let diff = git_spawn::parse::parse_diff_numstat(&out.stdout_str()).unwrap();
+
+    assert_eq!(diff.files.len(), 2);
+    let f_txt = diff.files.iter().find(|f| f.path == "f.txt").unwrap();
+    assert_eq!(f_txt.insertions, 1);
+    assert_eq!(f_txt.deletions, 0);
+    assert!(!f_txt.binary);
+    let bin_dat = diff.files.iter().find(|f| f.path == "bin.dat").unwrap();
+    assert!(bin_dat.binary);
+    assert_eq!(diff.total_insertions, 1);
+    assert_eq!(diff.total_deletions, 0);
+}
+
+#[tokio::test]
+async fn diff_stat_parses_totals_and_rename() {
+    let (_tmp, repo) = make_repo().await;
+    std::fs::write(repo.path().join("old.txt"), "one\ntwo\nthree\n").unwrap();
+    repo.add().path(".").execute().await.unwrap();
+    repo.commit().message("init").execute().await.unwrap();
+
+    std::fs::write(repo.path().join("old.txt"), "one\nTWO\nthree\nfour\n").unwrap();
+    repo.add().path(".").execute().await.unwrap();
+    repo.mv("old.txt", "new.txt").execute().await.unwrap();
+
+    let out = repo.diff().cached().stat().execute().await.unwrap();
+    let diff = git_spawn::parse::parse_diff_stat(&out.stdout_str()).unwrap();
+
+    assert_eq!(diff.files.len(), 1);
+    assert_eq!(diff.files[0].path, "new.txt");
+    assert_eq!(diff.total_insertions, 2);
+    assert_eq!(diff.total_deletions, 1);
+}
+
+#[tokio::test]
 async fn show_result_parses_default_format() {
     let (_tmp, repo) = make_repo().await;
     std::fs::write(repo.path().join("f"), "one\n").unwrap();
@@ -526,6 +577,132 @@ async fn pull_classifies_fast_forward_and_already_up_to_date() {
     assert!(result.fast_forward, "expected fast-forward: {combined}");
     assert!(!result.already_up_to_date);
     assert!(repo_b.path().join("another").exists());
+}
+
+#[tokio::test]
+async fn rebase_fast_forward_parses() {
+    let (_tmp, repo) = make_repo().await;
+    commit_one(&repo, "a", "a", "init").await;
+    repo.switch().create("topic").execute().await.unwrap();
+
+    repo.switch().target("main").execute().await.unwrap();
+    commit_one(&repo, "b", "b", "second").await;
+
+    repo.switch().target("topic").execute().await.unwrap();
+    // The `apply` backend prints `Fast-forwarded` for a trivial rebase; the
+    // default `merge` backend instead prints the generic success message
+    // that `RebaseResult` leaves unclassified (only `raw` is meaningful).
+    let mut rebase = repo.rebase();
+    rebase.upstream("main").arg("--apply");
+    let out = rebase.execute().await.unwrap();
+
+    let result = rebase.parse_result(&out).unwrap();
+    assert!(result.fast_forward, "expected fast-forward: {}", result.raw);
+    assert!(!result.up_to_date);
+    assert!(!result.conflicts);
+    assert!(repo.path().join("b").exists());
+}
+
+#[tokio::test]
+async fn rebase_conflict_parses() {
+    let (_tmp, repo) = make_repo().await;
+    commit_one(&repo, "f.txt", "line1\n", "init").await;
+    repo.switch().create("topic").execute().await.unwrap();
+
+    repo.switch().target("main").execute().await.unwrap();
+    commit_one(&repo, "f.txt", "line1\nmain\n", "main change").await;
+
+    repo.switch().target("topic").execute().await.unwrap();
+    commit_one(&repo, "f.txt", "line1\ntopic\n", "topic change").await;
+
+    let mut rebase = repo.rebase();
+    rebase.upstream("main");
+    let err = rebase.execute().await.unwrap_err();
+
+    let combined = match err {
+        git_spawn::Error::CommandFailed { stdout, stderr, .. } => format!("{stdout}{stderr}"),
+        other => panic!("expected CommandFailed, got {other:?}"),
+    };
+    let result = git_spawn::parse::parse_rebase(&combined);
+    assert!(result.conflicts, "expected conflicts: {combined}");
+    assert!(!result.up_to_date);
+    assert!(!result.fast_forward);
+
+    repo.rebase().abort().execute().await.unwrap();
+}
+
+#[tokio::test]
+async fn full_status_reports_ahead_and_behind() {
+    let tmp = tempfile::tempdir().unwrap();
+
+    // Bare "remote" repo.
+    let bare_path = tmp.path().join("remote.git");
+    std::fs::create_dir_all(&bare_path).unwrap();
+    let mut init = git_spawn::InitCommand::in_directory(&bare_path);
+    init.bare().initial_branch("main").quiet();
+    init.execute().await.unwrap();
+
+    // Working copy A: publish the initial commit.
+    let a_path = tmp.path().join("a");
+    std::fs::create_dir_all(&a_path).unwrap();
+    let mut init_a = git_spawn::InitCommand::in_directory(&a_path);
+    init_a.initial_branch("main").quiet();
+    let repo_a = init_a.execute().await.unwrap();
+    configure_identity(&repo_a);
+    commit_one(&repo_a, "hello", "hi\n", "init").await;
+
+    repo_a
+        .remote(git_spawn::RemoteCommand::add(
+            "origin",
+            bare_path.display().to_string(),
+        ))
+        .execute()
+        .await
+        .unwrap();
+    repo_a
+        .push()
+        .set_upstream()
+        .remote("origin")
+        .refspec("main")
+        .execute()
+        .await
+        .unwrap();
+
+    // Clone into B, which tracks origin/main.
+    let b_path = tmp.path().join("b");
+    let repo_b = Repository::clone(bare_path.display().to_string(), &b_path)
+        .await
+        .unwrap();
+    configure_identity(&repo_b);
+
+    // B diverges locally (ahead by one)...
+    commit_one(&repo_b, "b-only", "b\n", "b-only commit").await;
+
+    // ...while A publishes a commit B hasn't fetched yet (behind by one).
+    commit_one(&repo_a, "a-only", "a\n", "a-only commit").await;
+    repo_a
+        .push()
+        .remote("origin")
+        .refspec("main")
+        .execute()
+        .await
+        .unwrap();
+    repo_b.fetch().remote("origin").execute().await.unwrap();
+
+    let out = repo_b
+        .status()
+        .format(git_spawn::command::status::StatusFormat::PorcelainV1)
+        .branch()
+        .null_terminate()
+        .execute()
+        .await
+        .unwrap();
+    let status = git_spawn::parse::parse_full_status(&out.stdout_str()).unwrap();
+
+    assert_eq!(status.branch.as_deref(), Some("main"));
+    assert_eq!(status.tracking.as_deref(), Some("origin/main"));
+    assert_eq!(status.ahead, 1);
+    assert_eq!(status.behind, 1);
 }
 
 #[tokio::test]
