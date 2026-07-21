@@ -621,3 +621,76 @@ async fn conflicts_resolve_clears_the_path() {
         "no conflicts remain after resolve"
     );
 }
+
+// ---------- signing ----------
+
+#[tokio::test]
+async fn signing_config_rollup_reflects_local_sets() {
+    use git_spawn::signing::SignatureFormat;
+
+    let (_tmp, repo) = make_repo().await;
+    make_initial_commit(&repo).await;
+
+    // Read effective config, which may inherit a global signing key, so this
+    // test sets every value locally to stay independent of the host gitconfig.
+    repo.signing().set_signing_key("KEY1").await.unwrap();
+    repo.signing()
+        .set_format(SignatureFormat::OpenPgp)
+        .await
+        .unwrap();
+    repo.signing().set_sign_commits(true).await.unwrap();
+    repo.signing().set_sign_tags(false).await.unwrap();
+
+    let cfg = repo.signing().config().await.expect("config");
+    assert_eq!(cfg.signing_key.as_deref(), Some("KEY1"));
+    assert_eq!(cfg.format, Some(SignatureFormat::OpenPgp));
+    assert!(cfg.sign_commits);
+    assert!(!cfg.sign_tags);
+}
+
+#[tokio::test]
+async fn signing_set_key_and_format_round_trip() {
+    use git_spawn::signing::SignatureFormat;
+
+    let (_tmp, repo) = make_repo().await;
+    make_initial_commit(&repo).await;
+
+    repo.signing()
+        .set_signing_key("ABCD1234")
+        .await
+        .expect("set key");
+    repo.signing()
+        .set_format(SignatureFormat::Ssh)
+        .await
+        .expect("set format");
+
+    assert_eq!(
+        repo.signing().signing_key().await.unwrap(),
+        Some("ABCD1234".to_string())
+    );
+    assert_eq!(
+        repo.signing().format().await.unwrap(),
+        Some(SignatureFormat::Ssh)
+    );
+
+    // The rollup reports the same values.
+    let cfg = repo.signing().config().await.unwrap();
+    assert_eq!(cfg.signing_key.as_deref(), Some("ABCD1234"));
+    assert_eq!(cfg.format, Some(SignatureFormat::Ssh));
+}
+
+#[tokio::test]
+async fn signing_toggle_commit_and_tag_flags() {
+    let (_tmp, repo) = make_repo().await;
+    make_initial_commit(&repo).await;
+
+    repo.signing().set_sign_commits(true).await.unwrap();
+    repo.signing().set_sign_tags(true).await.unwrap();
+    assert!(repo.signing().sign_commits().await.unwrap());
+    assert!(repo.signing().sign_tags().await.unwrap());
+
+    repo.signing().set_sign_commits(false).await.unwrap();
+    assert!(!repo.signing().sign_commits().await.unwrap());
+    // The tag flag is independent and still on.
+    assert!(repo.signing().sign_tags().await.unwrap());
+}
