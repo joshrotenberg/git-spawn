@@ -648,7 +648,7 @@ async fn full_status_reports_ahead_and_behind() {
     let mut init_a = git_spawn::InitCommand::in_directory(&a_path);
     init_a.initial_branch("main").quiet();
     let repo_a = init_a.execute().await.unwrap();
-    configure_identity(&repo_a);
+    configure_identity(&repo_a).await;
     commit_one(&repo_a, "hello", "hi\n", "init").await;
 
     repo_a
@@ -673,7 +673,7 @@ async fn full_status_reports_ahead_and_behind() {
     let repo_b = Repository::clone(bare_path.display().to_string(), &b_path)
         .await
         .unwrap();
-    configure_identity(&repo_b);
+    configure_identity(&repo_b).await;
 
     // B diverges locally (ahead by one)...
     commit_one(&repo_b, "b-only", "b\n", "b-only commit").await;
