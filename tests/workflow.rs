@@ -495,3 +495,66 @@ async fn workflow_sync_rebases_against_upstream() {
     assert_eq!(info.ahead, 0);
     assert_eq!(info.behind, 0);
 }
+
+// ---------- stashes ----------
+
+#[tokio::test]
+async fn stashes_push_list_pop_roundtrip() {
+    let (_tmp, repo) = make_repo().await;
+    make_initial_commit(&repo).await;
+
+    // Empty stack to start.
+    assert!(repo.stashes().list().await.unwrap().is_empty());
+
+    // Dirty the tree, then stash with a message.
+    std::fs::write(repo.path().join("README"), "changed").unwrap();
+    repo.stashes().push("wip on review").await.unwrap();
+
+    let entries = repo.stashes().list().await.unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].index, 0);
+    assert_eq!(entries[0].branch, "main");
+    assert_eq!(entries[0].subject, "wip on review");
+    assert_eq!(entries[0].sha.len(), 40);
+
+    // Stashing cleaned the working tree.
+    assert!(!repo.info().await.unwrap().dirty, "tree clean after push");
+
+    // pop restores the change and empties the stack.
+    repo.stashes().pop(0).await.unwrap();
+    assert!(repo.stashes().list().await.unwrap().is_empty());
+    assert!(repo.info().await.unwrap().dirty, "tree dirty after pop");
+}
+
+#[tokio::test]
+async fn stashes_apply_drop_and_clear() {
+    let (_tmp, repo) = make_repo().await;
+    make_initial_commit(&repo).await;
+
+    std::fs::write(repo.path().join("README"), "one").unwrap();
+    repo.stashes().push("first").await.unwrap();
+    std::fs::write(repo.path().join("README"), "two").unwrap();
+    repo.stashes().push("second").await.unwrap();
+
+    let entries = repo.stashes().list().await.unwrap();
+    assert_eq!(entries.len(), 2);
+    // Most recent stash is index 0.
+    assert_eq!(entries[0].index, 0);
+    assert_eq!(entries[0].subject, "second");
+    assert_eq!(entries[1].index, 1);
+    assert_eq!(entries[1].subject, "first");
+
+    // apply leaves the entry on the stack.
+    repo.stashes().apply(0).await.unwrap();
+    assert_eq!(repo.stashes().list().await.unwrap().len(), 2);
+
+    // drop removes a specific entry.
+    repo.stashes().drop(0).await.unwrap();
+    let after_drop = repo.stashes().list().await.unwrap();
+    assert_eq!(after_drop.len(), 1);
+    assert_eq!(after_drop[0].subject, "first");
+
+    // clear empties the stack.
+    repo.stashes().clear().await.unwrap();
+    assert!(repo.stashes().list().await.unwrap().is_empty());
+}
