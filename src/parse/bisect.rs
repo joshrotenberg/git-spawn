@@ -10,8 +10,9 @@
 //! - stepping: `Bisecting: N revisions left to test (roughly M steps)`
 //!   followed by a `[<sha>] <subject>` line naming the commit git checked
 //!   out next.
-//! - found: `<sha> is the first bad commit`, reported once the session
-//!   converges.
+//! - found: `<sha> is the first bad commit` (older git) or `<sha> is the
+//!   first 'bad' commit` (recent git quotes the term), reported once the
+//!   session converges.
 //! - `reset`: git prints `Previous HEAD position was ...` (or `HEAD is now
 //!   at ...`) while restoring the original `HEAD`.
 //!
@@ -106,10 +107,15 @@ pub fn parse_bisect(output: &str) -> BisectResult {
 }
 
 /// Extract the SHA from a `<sha> is the first bad commit` line.
+///
+/// git's wording varies across versions: older git prints
+/// `<sha> is the first bad commit`, while recent git quotes the term as
+/// `<sha> is the first 'bad' commit`. Both are accepted.
 fn first_bad_commit(output: &str) -> Option<String> {
     output.lines().find_map(|line| {
-        let sha = line.strip_suffix(" is the first bad commit")?;
-        (!sha.is_empty()).then(|| sha.to_string())
+        let (sha, rest) = line.split_once(" is the first ")?;
+        let term = rest.strip_suffix(" commit")?;
+        (!sha.is_empty() && matches!(term, "bad" | "'bad'")).then(|| sha.to_string())
     })
 }
 
@@ -157,6 +163,18 @@ mod tests {
             Some("3050fc6d1234567890abcdef1234567890abcdef")
         );
         assert!(result.current_commit.is_none());
+    }
+
+    #[test]
+    fn found_extracts_bad_commit_quoted_term() {
+        // Recent git quotes the term: "<sha> is the first 'bad' commit".
+        let output = "3050fc6d1234567890abcdef1234567890abcdef is the first 'bad' commit\ncommit 3050fc6d1234567890abcdef1234567890abcdef\n";
+        let result = parse_bisect(output);
+        assert_eq!(result.status, BisectStatus::Found);
+        assert_eq!(
+            result.bad_commit.as_deref(),
+            Some("3050fc6d1234567890abcdef1234567890abcdef")
+        );
     }
 
     #[test]

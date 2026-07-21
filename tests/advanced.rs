@@ -403,7 +403,6 @@ async fn bisect_converges_on_first_bad_commit() {
     // c2 or c3 next; mark it bad or good based on whether it's before or at
     // the seeded bad commit, until the session converges.
     let mut found: Option<git_spawn::parse::BisectResult> = None;
-    let mut trail: Vec<String> = Vec::new();
     for _ in 0..10 {
         let current = {
             let mut rp = git_spawn::RevParseCommand::new();
@@ -441,25 +440,13 @@ async fn bisect_converges_on_first_bad_commit() {
         let cmd = repo.bisect(mark);
         let output = cmd.execute().await.unwrap();
         let result = cmd.parse_result(&output).unwrap();
-        trail.push(format!(
-            "current={} status={:?} out={:?} err={:?}",
-            current,
-            result.status,
-            output.stdout_str(),
-            output.stderr
-        ));
         if result.status == BisectStatus::Found {
             found = Some(result);
             break;
         }
     }
 
-    let result = found.unwrap_or_else(|| {
-        panic!(
-            "bisect should converge within 10 steps; bad_sha={bad_sha}; trail:\n{}",
-            trail.join("\n")
-        )
-    });
+    let result = found.expect("bisect should converge within 10 steps");
     assert_eq!(result.status, BisectStatus::Found);
     assert_eq!(result.bad_commit.as_deref(), Some(bad_sha.as_str()));
 
