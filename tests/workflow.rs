@@ -558,3 +558,66 @@ async fn stashes_apply_drop_and_clear() {
     repo.stashes().clear().await.unwrap();
     assert!(repo.stashes().list().await.unwrap().is_empty());
 }
+
+// ---------- conflicts ----------
+
+use git_spawn::conflicts::ConflictKind;
+
+/// Drive `main` and `other` into a both-modified conflict on `README`, leaving
+/// the merge in progress. Returns with `HEAD` on `main` mid-merge.
+async fn make_merge_conflict(repo: &Repository) {
+    make_initial_commit(repo).await;
+
+    // A divergent commit on `other`.
+    repo.branch().create("other").execute().await.unwrap();
+    repo.checkout().target("other").execute().await.unwrap();
+    std::fs::write(repo.path().join("README"), "other side").unwrap();
+    repo.add().path("README").execute().await.unwrap();
+    repo.commit().message("other").execute().await.unwrap();
+
+    // A conflicting commit back on `main`.
+    repo.checkout().target("main").execute().await.unwrap();
+    std::fs::write(repo.path().join("README"), "main side").unwrap();
+    repo.add().path("README").execute().await.unwrap();
+    repo.commit().message("main").execute().await.unwrap();
+
+    // The merge fails and leaves README unmerged; the non-zero exit is
+    // expected here.
+    let merged = repo.merge().commit_ref("other").execute().await;
+    assert!(merged.is_err(), "merge should conflict");
+}
+
+#[tokio::test]
+async fn conflicts_list_reports_both_modified() {
+    let (_tmp, repo) = make_repo().await;
+    make_merge_conflict(&repo).await;
+
+    let conflicts = repo.conflicts().list().await.unwrap();
+    assert_eq!(conflicts.len(), 1);
+    assert_eq!(conflicts[0].path, "README");
+    assert_eq!(conflicts[0].kind, ConflictKind::BothModified);
+}
+
+#[tokio::test]
+async fn conflicts_empty_on_clean_tree() {
+    let (_tmp, repo) = make_repo().await;
+    make_initial_commit(&repo).await;
+
+    assert!(repo.conflicts().list().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn conflicts_resolve_clears_the_path() {
+    let (_tmp, repo) = make_repo().await;
+    make_merge_conflict(&repo).await;
+    assert_eq!(repo.conflicts().list().await.unwrap().len(), 1);
+
+    // Pick a resolution, then stage it.
+    std::fs::write(repo.path().join("README"), "resolved").unwrap();
+    repo.conflicts().resolve("README").await.unwrap();
+
+    assert!(
+        repo.conflicts().list().await.unwrap().is_empty(),
+        "no conflicts remain after resolve"
+    );
+}

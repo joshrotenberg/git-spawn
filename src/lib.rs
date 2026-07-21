@@ -99,7 +99,7 @@
 //! |------------|:-------:|----------------------------------------------------|
 //! | `parse`    |   on    | Typed parsers for status/log/diff/pull output      |
 //! | `serde`    |   off   | `Serialize`/`Deserialize` on parsed types          |
-//! | `workflow` |   off   | Higher-level helpers ([`info`], [`branches`], [`tags`], [`history`], [`stashes`], [`workflow`]) |
+//! | `workflow` |   off   | Higher-level helpers ([`info`], [`branches`], [`tags`], [`history`], [`stashes`], [`conflicts`], [`workflow`]) |
 //!
 //! ## Error handling
 //!
@@ -132,6 +132,9 @@ pub mod repo;
 #[cfg(feature = "workflow")]
 #[cfg_attr(docsrs, doc(cfg(feature = "workflow")))]
 pub mod branches;
+#[cfg(feature = "workflow")]
+#[cfg_attr(docsrs, doc(cfg(feature = "workflow")))]
+pub mod conflicts;
 #[cfg(feature = "workflow")]
 #[cfg_attr(docsrs, doc(cfg(feature = "workflow")))]
 pub mod history;
