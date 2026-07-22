@@ -588,7 +588,12 @@ mod tests {
         run(vec!["config", "user.email", "test@example.com"]).await;
         run(vec!["config", "user.name", "Test"]).await;
         run(vec!["config", "commit.gpgsign", "false"]).await;
-        run(vec!["config", "core.hooksPath", hooks_dir.to_str().unwrap()]).await;
+        run(vec![
+            "config",
+            "core.hooksPath",
+            hooks_dir.to_str().unwrap(),
+        ])
+        .await;
         std::fs::write(path.join("file.txt"), "hi").unwrap();
         run(vec!["add", "."]).await;
 
