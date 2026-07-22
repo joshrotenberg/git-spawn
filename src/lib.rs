@@ -171,14 +171,15 @@ pub use command::{
     branch::BranchCommand, cat_file::CatFileCommand, checkout::CheckoutCommand,
     cherry_pick::CherryPickCommand, clone::CloneCommand, commit::CommitCommand,
     config::ConfigCommand, describe::DescribeCommand, diff::DiffCommand, fetch::FetchCommand,
-    for_each_ref::ForEachRefCommand, grep::GrepCommand, hash_object::HashObjectCommand,
-    init::InitCommand, log::LogCommand, ls_files::LsFilesCommand, ls_tree::LsTreeCommand,
-    merge::MergeCommand, mv::MvCommand, notes::NotesCommand, pull::PullCommand, push::PushCommand,
-    rebase::RebaseCommand, reflog::ReflogCommand, remote::RemoteCommand, reset::ResetCommand,
-    restore::RestoreCommand, rev_parse::RevParseCommand, rm::RmCommand, show::ShowCommand,
-    show_ref::ShowRefCommand, stash::StashCommand, status::StatusCommand,
-    submodule::SubmoduleCommand, switch::SwitchCommand, symbolic_ref::SymbolicRefCommand,
-    tag::TagCommand, update_ref::UpdateRefCommand, worktree::WorktreeCommand,
+    for_each_ref::ForEachRefCommand, format_patch::FormatPatchCommand, grep::GrepCommand,
+    hash_object::HashObjectCommand, init::InitCommand, log::LogCommand, ls_files::LsFilesCommand,
+    ls_tree::LsTreeCommand, merge::MergeCommand, mv::MvCommand, notes::NotesCommand,
+    pull::PullCommand, push::PushCommand, rebase::RebaseCommand, reflog::ReflogCommand,
+    remote::RemoteCommand, reset::ResetCommand, restore::RestoreCommand,
+    rev_parse::RevParseCommand, rm::RmCommand, show::ShowCommand, show_ref::ShowRefCommand,
+    stash::StashCommand, status::StatusCommand, submodule::SubmoduleCommand, switch::SwitchCommand,
+    symbolic_ref::SymbolicRefCommand, tag::TagCommand, update_ref::UpdateRefCommand,
+    worktree::WorktreeCommand,
 };
 pub use error::{Error, Result};
 pub use repo::Repository;

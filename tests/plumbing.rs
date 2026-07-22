@@ -1,9 +1,9 @@
 //! Integration tests for plumbing commands and typed parsers.
 
 use git_spawn::{
-    CatFileCommand, DescribeCommand, ForEachRefCommand, GitCommand, HashObjectCommand,
-    LsFilesCommand, LsTreeCommand, Repository, RevParseCommand, ShowRefCommand, SymbolicRefCommand,
-    UpdateRefCommand,
+    CatFileCommand, DescribeCommand, ForEachRefCommand, FormatPatchCommand, GitCommand,
+    HashObjectCommand, LsFilesCommand, LsTreeCommand, Repository, RevParseCommand, ShowRefCommand,
+    SymbolicRefCommand, UpdateRefCommand,
 };
 
 mod common;
@@ -352,4 +352,35 @@ mod parsers {
         let paths = parse_ls_tree_name_only(&out.stdout_str());
         assert_eq!(paths, vec!["hello.txt"]);
     }
+}
+
+#[tokio::test]
+async fn format_patch_writes_one_file_per_commit() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    std::fs::write(repo.path().join("second.txt"), "two\n").unwrap();
+    repo.add().path("second.txt").execute().await.unwrap();
+    repo.commit().message("second").execute().await.unwrap();
+
+    let out_dir = repo.path().join("patches");
+    let mut cmd = FormatPatchCommand::new();
+    cmd.current_dir(repo.path())
+        .rev_spec("HEAD~1..HEAD")
+        .output_dir(&out_dir);
+    let paths = cmd.execute().await.unwrap();
+
+    assert_eq!(paths.len(), 1, "unexpected patch list: {paths:?}");
+    assert!(paths[0].exists(), "git reported a missing path: {paths:?}");
+    let body = std::fs::read_to_string(&paths[0]).unwrap();
+    assert!(
+        body.contains("second"),
+        "patch body missing subject: {body}"
+    );
+}
+
+#[tokio::test]
+async fn format_patch_without_rev_spec_is_rejected() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let mut cmd = FormatPatchCommand::new();
+    cmd.current_dir(repo.path());
+    assert!(cmd.execute().await.is_err());
 }
