@@ -118,6 +118,7 @@ name = "git-spawn"
 version = "0.2.1"
 dependencies = [
  "async-trait",
+ "libc",
  "serde",
  "serial_test",
  "tempfile",

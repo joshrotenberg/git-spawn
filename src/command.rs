@@ -310,7 +310,15 @@ impl CommandExecutor {
         result
     }
 
-    async fn execute_internal(&self, all_args: &[String]) -> Result<CommandOutput> {
+    /// Build the configured `git` subprocess (args, cwd, env, process group).
+    ///
+    /// On Unix the child is placed in its own process group so a timeout can
+    /// signal the whole group. git spawns children of its own (pack processes,
+    /// credential/askpass helpers, hooks) that would be orphaned if we only
+    /// killed the direct child. `kill_on_drop` is a belt-and-suspenders guard:
+    /// if the child handle is dropped without an explicit kill, the direct
+    /// child is still terminated rather than leaked.
+    fn build_command(&self, all_args: &[String]) -> TokioCommand {
         let mut cmd = TokioCommand::new("git");
         cmd.args(all_args)
             .stdout(Stdio::piped())
@@ -323,17 +331,17 @@ impl CommandExecutor {
             cmd.env(k, v);
         }
 
-        let output = cmd.output().await.map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                Error::GitNotFound
-            } else {
-                Error::Io {
-                    message: format!("failed to spawn git: {e}"),
-                    source: e,
-                }
-            }
-        })?;
+        // Run git as the leader of a new process group (pgid == child pid).
+        #[cfg(unix)]
+        cmd.process_group(0);
 
+        cmd.kill_on_drop(true);
+        cmd
+    }
+
+    /// Decode a finished process into [`CommandOutput`], mapping non-zero
+    /// exits to [`Error::CommandFailed`].
+    fn finish(&self, all_args: &[String], output: std::process::Output) -> Result<CommandOutput> {
         let stdout = output.stdout;
         let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
         let exit_code = output.status.code().unwrap_or(-1);
@@ -356,14 +364,42 @@ impl CommandExecutor {
         })
     }
 
+    async fn execute_internal(&self, all_args: &[String]) -> Result<CommandOutput> {
+        let output = self
+            .build_command(all_args)
+            .output()
+            .await
+            .map_err(map_spawn_error)?;
+        self.finish(all_args, output)
+    }
+
     async fn execute_with_timeout(
         &self,
         all_args: &[String],
         timeout_duration: Duration,
     ) -> Result<CommandOutput> {
-        match tokio::time::timeout(timeout_duration, self.execute_internal(all_args)).await {
-            Ok(r) => r,
+        let child = self
+            .build_command(all_args)
+            .spawn()
+            .map_err(map_spawn_error)?;
+
+        // Capture the pid (== process-group id on Unix) before `wait_with_output`
+        // takes ownership of the child; we need it to signal the group on timeout.
+        let pid = child.id();
+
+        match tokio::time::timeout(timeout_duration, child.wait_with_output()).await {
+            Ok(Ok(output)) => self.finish(all_args, output),
+            Ok(Err(e)) => Err(Error::Io {
+                message: format!("failed to run git: {e}"),
+                source: e,
+            }),
             Err(_) => {
+                // The `wait_with_output` future has been dropped, so the direct
+                // child is being killed via `kill_on_drop`. Also signal the whole
+                // group to reap any grandchildren git spawned.
+                if let Some(pid) = pid {
+                    kill_process_group(pid);
+                }
                 warn!(
                     timeout_secs = timeout_duration.as_secs(),
                     "command timed out"
@@ -373,6 +409,43 @@ impl CommandExecutor {
         }
     }
 }
+
+/// Map a spawn error to [`Error::GitNotFound`] when the binary is missing,
+/// otherwise to [`Error::Io`].
+fn map_spawn_error(e: std::io::Error) -> Error {
+    if e.kind() == std::io::ErrorKind::NotFound {
+        Error::GitNotFound
+    } else {
+        Error::Io {
+            message: format!("failed to spawn git: {e}"),
+            source: e,
+        }
+    }
+}
+
+/// Kill the process group led by `pid`.
+///
+/// The executor spawns git with `process_group(0)`, so the child's pid is also
+/// its process-group id. Signalling the negative pgid reaches every process in
+/// the group, including the pack/credential/hook children git spawned.
+#[cfg(unix)]
+fn kill_process_group(pid: u32) {
+    // A pid that overflows `i32` cannot name a real process group; skip it.
+    let Ok(pgid) = i32::try_from(pid) else {
+        return;
+    };
+    // SAFETY: `kill(2)` with a negative pid signals a process group. It has no
+    // memory-safety implications; a stale pgid simply returns `ESRCH`.
+    unsafe {
+        libc::kill(-pgid, libc::SIGKILL);
+    }
+}
+
+/// Windows fallback: there is no portable process-group kill here. The direct
+/// child is terminated via `kill_on_drop` (best-effort `TerminateProcess`);
+/// grandchildren are not tracked. A Job Object would be the complete fix.
+#[cfg(not(unix))]
+fn kill_process_group(_pid: u32) {}
 
 /// Captured output from running a git command.
 #[derive(Debug, Clone)]
@@ -477,5 +550,96 @@ mod tests {
         assert_eq!(o.stdout_lines(), vec!["a", "b"]);
         assert_eq!(o.stdout_trimmed(), "a\nb");
         assert_eq!(o.stdout_bytes(), b"a\nb\n");
+    }
+
+    /// A timeout must reap the grandchildren git spawned, not just the direct
+    /// child. Regression test for the process-group kill: a slow `pre-commit`
+    /// hook backgrounds a `sleep`, records its pid, and we assert that pid is
+    /// gone after the commit times out.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn timeout_kills_process_group() {
+        use std::os::unix::fs::PermissionsExt;
+        use std::time::Instant;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path();
+
+        // Every setup command goes through the executor (the tokio runtime),
+        // never std::process, to avoid the macOS SIGCHLD reaper race.
+        let run = |args: Vec<&str>| {
+            let owned: Vec<String> = args.into_iter().map(ToOwned::to_owned).collect();
+            let cwd = path.to_path_buf();
+            async move {
+                CommandExecutor::new()
+                    .cwd(cwd)
+                    .execute_command(owned)
+                    .await
+                    .unwrap()
+            }
+        };
+
+        // Use a controlled hooks dir: some environments set core.hooksPath
+        // globally, which makes .git/hooks/* inert. Point git at our own dir.
+        let hooks_dir = path.join("hooks-under-test");
+        std::fs::create_dir(&hooks_dir).unwrap();
+
+        run(vec!["init", "-q"]).await;
+        run(vec!["config", "user.email", "test@example.com"]).await;
+        run(vec!["config", "user.name", "Test"]).await;
+        run(vec!["config", "commit.gpgsign", "false"]).await;
+        run(vec![
+            "config",
+            "core.hooksPath",
+            hooks_dir.to_str().unwrap(),
+        ])
+        .await;
+        std::fs::write(path.join("file.txt"), "hi").unwrap();
+        run(vec!["add", "."]).await;
+
+        // A pre-commit hook that backgrounds a long sleep (the "grandchild")
+        // and records its pid, then waits on it so git blocks past the timeout.
+        let pidfile = path.join("grandchild.pid");
+        let hook = hooks_dir.join("pre-commit");
+        std::fs::write(
+            &hook,
+            format!(
+                "#!/bin/sh\nsleep 300 &\necho $! > \"{}\"\nwait\n",
+                pidfile.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        // The commit blocks in the hook and must time out.
+        let err = CommandExecutor::new()
+            .cwd(path)
+            .timeout(Duration::from_millis(1500))
+            .execute_command(vec!["commit".into(), "-m".into(), "x".into()])
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, Error::Timeout { .. }),
+            "expected timeout, got {err:?}"
+        );
+
+        // The hook ran during the timeout window, so the pidfile exists.
+        let grandchild: i32 = std::fs::read_to_string(&pidfile)
+            .expect("hook should have written the grandchild pid")
+            .trim()
+            .parse()
+            .expect("pidfile should contain a pid");
+
+        // The group kill should reap the backgrounded sleep. Poll until the
+        // pid is gone (kill(pid, 0) returns ESRCH); fail if it survives.
+        let is_alive = |pid: i32| unsafe { libc::kill(pid, 0) == 0 };
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while is_alive(grandchild) {
+            assert!(
+                Instant::now() < deadline,
+                "grandchild pid {grandchild} survived the timeout: process group was not killed"
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
     }
 }
