@@ -488,3 +488,48 @@ fn apply_check_reverse_three_way_index_cached_strip() {
         ]
     );
 }
+
+#[test]
+fn am_single_mailbox() {
+    let mut c = AmCommand::new();
+    c.mailbox("/tmp/p/0001-fix.patch");
+    assert_eq!(args_of(&c), vec!["am", "/tmp/p/0001-fix.patch"]);
+}
+
+#[test]
+fn am_signoff_three_way_keep_cr_strip() {
+    let mut c = AmCommand::new();
+    c.mailbox("a.patch")
+        .mailbox("b.patch")
+        .signoff()
+        .three_way()
+        .keep_cr()
+        .strip(1);
+    assert_eq!(
+        args_of(&c),
+        vec![
+            "am",
+            "--signoff",
+            "--3way",
+            "--keep-cr",
+            "-p1",
+            "a.patch",
+            "b.patch"
+        ]
+    );
+}
+
+#[test]
+fn am_session_controls_replace_everything_else() {
+    let mut abort = AmCommand::new();
+    abort.mailbox("a.patch").signoff().abort();
+    assert_eq!(args_of(&abort), vec!["am", "--abort"]);
+
+    let mut cont = AmCommand::new();
+    cont.mailbox("a.patch").cont();
+    assert_eq!(args_of(&cont), vec!["am", "--continue"]);
+
+    let mut skip = AmCommand::new();
+    skip.mailbox("a.patch").skip();
+    assert_eq!(args_of(&skip), vec!["am", "--skip"]);
+}
