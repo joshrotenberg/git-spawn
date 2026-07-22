@@ -981,7 +981,20 @@ async fn hooks_install_then_list_reports_enabled() {
 
 #[tokio::test]
 async fn hooks_remove_deletes_the_file() {
+    use git_spawn::command::config::ConfigCommand;
+
     let (_tmp, repo) = make_repo().await;
+
+    // Point at a controlled, initially empty hooks directory so removal is not
+    // masked by a `pre-push.sample` that git's default template ships: that
+    // sample would be reported under the bare name `pre-push` and defeat the
+    // "removed hook is gone" assertion in clean CI environments.
+    let dir = repo.path().join("hooks-under-test");
+    std::fs::create_dir_all(&dir).unwrap();
+    repo.config(ConfigCommand::set("core.hooksPath", dir.to_str().unwrap()))
+        .execute()
+        .await
+        .unwrap();
 
     repo.hooks()
         .install("pre-push", "#!/bin/sh\n")
