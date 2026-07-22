@@ -779,3 +779,60 @@ async fn remotes_get_url_errors_for_unknown() {
 
     assert!(repo.remotes().get_url("nope").await.is_err());
 }
+// ---------- changes ----------
+
+#[tokio::test]
+async fn changes_clean_tree_is_not_dirty() {
+    let (_tmp, repo) = make_repo().await;
+    make_initial_commit(&repo).await;
+
+    let changes = repo.changes().summary().await.unwrap();
+    assert!(changes.is_clean());
+    assert!(!changes.is_dirty());
+    assert_eq!(changes.branch.as_deref(), Some("main"));
+    assert!(changes.tracking.is_none());
+    assert_eq!(changes.ahead, 0);
+    assert_eq!(changes.behind, 0);
+    assert!(changes.staged.is_empty());
+    assert!(changes.unstaged.is_empty());
+    assert!(changes.untracked.is_empty());
+}
+
+#[tokio::test]
+async fn changes_classifies_staged_unstaged_untracked() {
+    let (_tmp, repo) = make_repo().await;
+    make_initial_commit(&repo).await;
+
+    // Staged: a new file added to the index.
+    std::fs::write(repo.path().join("staged.txt"), "s").unwrap();
+    repo.add().path("staged.txt").execute().await.unwrap();
+
+    // Unstaged: a tracked file modified in the working tree only.
+    std::fs::write(repo.path().join("README"), "changed").unwrap();
+
+    // Untracked: a new file never added.
+    std::fs::write(repo.path().join("untracked.txt"), "u").unwrap();
+
+    let changes = repo.changes().summary().await.unwrap();
+    assert!(changes.is_dirty());
+    assert_eq!(changes.staged, vec!["staged.txt"]);
+    assert_eq!(changes.unstaged, vec!["README"]);
+    assert_eq!(changes.untracked, vec!["untracked.txt"]);
+}
+
+#[tokio::test]
+async fn changes_index_and_worktree_edit_lands_in_both() {
+    let (_tmp, repo) = make_repo().await;
+    make_initial_commit(&repo).await;
+
+    // Stage an edit to README, then edit it again in the working tree: git
+    // reports this as `MM`, so it is both staged and unstaged.
+    std::fs::write(repo.path().join("README"), "staged edit").unwrap();
+    repo.add().path("README").execute().await.unwrap();
+    std::fs::write(repo.path().join("README"), "worktree edit").unwrap();
+
+    let changes = repo.changes().summary().await.unwrap();
+    assert_eq!(changes.staged, vec!["README"]);
+    assert_eq!(changes.unstaged, vec!["README"]);
+    assert!(changes.untracked.is_empty());
+}
