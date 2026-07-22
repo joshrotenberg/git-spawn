@@ -1,7 +1,7 @@
 //! Integration tests for plumbing commands and typed parsers.
 
 use git_spawn::{
-    AmCommand, ApplyCommand, CatFileCommand, CherryCommand, DescribeCommand, Error,
+    AmCommand, ApplyCommand, CatFileCommand, CherryCommand, CleanCommand, DescribeCommand, Error,
     ForEachRefCommand, FormatPatchCommand, GitCommand, HashObjectCommand, LogCommand,
     LsFilesCommand, LsTreeCommand, Repository, RevParseCommand, ShowRefCommand, SymbolicRefCommand,
     UpdateRefCommand, VerifyCommitCommand, VerifyTagCommand,
@@ -673,4 +673,94 @@ mod cherry_parser {
         assert_eq!(entries.len(), 1, "unexpected entries: {entries:?}");
         assert_eq!(entries[0].status, CherryStatus::Upstream);
     }
+}
+
+#[tokio::test]
+async fn clean_dry_run_reports_without_removing() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let untracked = repo.path().join("scratch.txt");
+    std::fs::write(&untracked, "scratch\n").unwrap();
+
+    let mut cmd = CleanCommand::new();
+    cmd.current_dir(repo.path()).dry_run();
+    let out = cmd.execute().await.unwrap();
+
+    assert!(
+        out.stdout_str().contains("scratch.txt"),
+        "dry run did not report the file: {}",
+        out.stdout_str()
+    );
+    assert!(untracked.exists(), "dry run removed the file");
+}
+
+#[tokio::test]
+async fn clean_force_removes_untracked_files() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let untracked = repo.path().join("scratch.txt");
+    std::fs::write(&untracked, "scratch\n").unwrap();
+
+    let mut cmd = CleanCommand::new();
+    cmd.current_dir(repo.path()).force();
+    cmd.execute().await.unwrap();
+
+    assert!(!untracked.exists(), "the untracked file survived");
+    assert!(
+        repo.path().join("hello.txt").exists(),
+        "a tracked file was removed"
+    );
+}
+
+#[tokio::test]
+async fn clean_needs_directories_to_recurse() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let dir = repo.path().join("scratch");
+    std::fs::create_dir(&dir).unwrap();
+    std::fs::write(dir.join("inner.txt"), "inner\n").unwrap();
+
+    let mut cmd = CleanCommand::new();
+    cmd.current_dir(repo.path()).force();
+    cmd.execute().await.unwrap();
+    assert!(dir.exists(), "the directory went without -d");
+
+    let mut cmd = CleanCommand::new();
+    cmd.current_dir(repo.path()).force().directories();
+    cmd.execute().await.unwrap();
+    assert!(!dir.exists(), "-d did not remove the directory");
+}
+
+#[tokio::test]
+async fn clean_needs_ignored_to_remove_ignored_files() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    std::fs::write(repo.path().join(".gitignore"), "ignored.txt\n").unwrap();
+    repo.add().path(".gitignore").execute().await.unwrap();
+    repo.commit().message("ignore").execute().await.unwrap();
+
+    let ignored = repo.path().join("ignored.txt");
+    std::fs::write(&ignored, "ignored\n").unwrap();
+
+    let mut cmd = CleanCommand::new();
+    cmd.current_dir(repo.path()).force();
+    cmd.execute().await.unwrap();
+    assert!(ignored.exists(), "the ignored file went without -x");
+
+    let mut cmd = CleanCommand::new();
+    cmd.current_dir(repo.path()).force().ignored();
+    cmd.execute().await.unwrap();
+    assert!(!ignored.exists(), "-x did not remove the ignored file");
+}
+
+#[tokio::test]
+async fn clean_pathspecs_limit_what_is_removed() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let kept = repo.path().join("keep.txt");
+    let removed = repo.path().join("drop.txt");
+    std::fs::write(&kept, "keep\n").unwrap();
+    std::fs::write(&removed, "drop\n").unwrap();
+
+    let mut cmd = CleanCommand::new();
+    cmd.current_dir(repo.path()).force().path("drop.txt");
+    cmd.execute().await.unwrap();
+
+    assert!(!removed.exists(), "the matching path survived");
+    assert!(kept.exists(), "a path outside the pathspec was removed");
 }

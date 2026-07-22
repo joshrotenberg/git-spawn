@@ -593,3 +593,27 @@ fn cherry_defaults_to_the_configured_upstream() {
     let c = CherryCommand::new();
     assert_eq!(args_of(&c), vec!["cherry"]);
 }
+
+#[test]
+fn clean_dry_run_with_directories() {
+    let mut c = CleanCommand::new();
+    c.dry_run().directories();
+    assert_eq!(args_of(&c), vec!["clean", "--dry-run", "-d"]);
+}
+
+#[test]
+fn clean_force_including_ignored_files() {
+    let mut c = CleanCommand::new();
+    c.force().directories().ignored();
+    assert_eq!(args_of(&c), vec!["clean", "--force", "-d", "-x"]);
+}
+
+#[test]
+fn clean_pathspecs_follow_a_separator() {
+    let mut c = CleanCommand::new();
+    c.force().paths(["build", "target"]).path("dist");
+    assert_eq!(
+        args_of(&c),
+        vec!["clean", "--force", "--", "build", "target", "dist"]
+    );
+}
