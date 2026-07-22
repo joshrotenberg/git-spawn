@@ -567,3 +567,29 @@ fn verify_tag_raw_verbose_multiple() {
         vec!["verify-tag", "--raw", "-v", "v1.0.0", "v1.1.0"]
     );
 }
+
+#[test]
+fn cherry_upstream_only() {
+    let mut c = CherryCommand::new();
+    c.upstream("origin/main");
+    assert_eq!(args_of(&c), vec!["cherry", "origin/main"]);
+}
+
+#[test]
+fn cherry_verbose_with_head_and_limit() {
+    let mut c = CherryCommand::new();
+    c.upstream("origin/main")
+        .head("feature")
+        .limit("v1.0")
+        .verbose();
+    assert_eq!(
+        args_of(&c),
+        vec!["cherry", "-v", "origin/main", "feature", "v1.0"]
+    );
+}
+
+#[test]
+fn cherry_defaults_to_the_configured_upstream() {
+    let c = CherryCommand::new();
+    assert_eq!(args_of(&c), vec!["cherry"]);
+}

@@ -69,6 +69,7 @@ pub mod bisect;
 pub mod branch;
 pub mod cat_file;
 pub mod checkout;
+pub mod cherry;
 pub mod cherry_pick;
 pub mod clone;
 pub mod commit;
