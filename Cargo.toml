@@ -26,6 +26,7 @@ workflow = ["parse"]
 [dependencies]
 tokio = { version = "1.46", features = [
     "process",
+    "fs",
     "rt-multi-thread",
     "macros",
     "time",
