@@ -143,6 +143,9 @@ pub mod history;
 pub mod info;
 #[cfg(feature = "workflow")]
 #[cfg_attr(docsrs, doc(cfg(feature = "workflow")))]
+pub mod remotes;
+#[cfg(feature = "workflow")]
+#[cfg_attr(docsrs, doc(cfg(feature = "workflow")))]
 pub mod signing;
 #[cfg(feature = "workflow")]
 #[cfg_attr(docsrs, doc(cfg(feature = "workflow")))]

@@ -694,3 +694,88 @@ async fn signing_toggle_commit_and_tag_flags() {
     // The tag flag is independent and still on.
     assert!(repo.signing().sign_tags().await.unwrap());
 }
+
+// ---------- remotes ----------
+
+#[tokio::test]
+async fn remotes_empty_on_fresh_repo() {
+    let (_tmp, repo) = make_repo().await;
+    make_initial_commit(&repo).await;
+
+    assert!(repo.remotes().list().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn remotes_add_list_and_get_url() {
+    let (_tmp, repo) = make_repo().await;
+    make_initial_commit(&repo).await;
+
+    repo.remotes()
+        .add("origin", "https://example.com/x.git")
+        .await
+        .expect("add");
+
+    let remotes = repo.remotes().list().await.expect("list");
+    assert_eq!(remotes.len(), 1);
+    assert_eq!(remotes[0].name, "origin");
+    assert_eq!(remotes[0].fetch_url, "https://example.com/x.git");
+    assert_eq!(remotes[0].push_url, "https://example.com/x.git");
+
+    let url = repo.remotes().get_url("origin").await.expect("get_url");
+    assert_eq!(url, "https://example.com/x.git");
+}
+
+#[tokio::test]
+async fn remotes_set_url_changes_fetch_url() {
+    let (_tmp, repo) = make_repo().await;
+    make_initial_commit(&repo).await;
+    repo.remotes()
+        .add("origin", "https://example.com/old.git")
+        .await
+        .unwrap();
+
+    repo.remotes()
+        .set_url("origin", "https://example.com/new.git")
+        .await
+        .expect("set_url");
+
+    assert_eq!(
+        repo.remotes().get_url("origin").await.unwrap(),
+        "https://example.com/new.git"
+    );
+}
+
+#[tokio::test]
+async fn remotes_rename_and_remove() {
+    let (_tmp, repo) = make_repo().await;
+    make_initial_commit(&repo).await;
+    repo.remotes()
+        .add("origin", "https://example.com/x.git")
+        .await
+        .unwrap();
+
+    repo.remotes()
+        .rename("origin", "upstream")
+        .await
+        .expect("rename");
+    let names: Vec<String> = repo
+        .remotes()
+        .list()
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|r| r.name)
+        .collect();
+    assert_eq!(names, vec!["upstream".to_string()]);
+
+    repo.remotes().remove("upstream").await.expect("remove");
+    assert!(repo.remotes().list().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn remotes_get_url_errors_for_unknown() {
+    let (_tmp, repo) = make_repo().await;
+    make_initial_commit(&repo).await;
+
+    assert!(repo.remotes().get_url("nope").await.is_err());
+}
