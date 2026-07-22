@@ -182,7 +182,7 @@ pub use command::{
     rev_parse::RevParseCommand, rm::RmCommand, show::ShowCommand, show_ref::ShowRefCommand,
     stash::StashCommand, status::StatusCommand, submodule::SubmoduleCommand, switch::SwitchCommand,
     symbolic_ref::SymbolicRefCommand, tag::TagCommand, update_ref::UpdateRefCommand,
-    worktree::WorktreeCommand,
+    verify_commit::VerifyCommitCommand, verify_tag::VerifyTagCommand, worktree::WorktreeCommand,
 };
 pub use error::{Error, Result};
 pub use repo::Repository;

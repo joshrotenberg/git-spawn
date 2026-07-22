@@ -533,3 +533,37 @@ fn am_session_controls_replace_everything_else() {
     skip.mailbox("a.patch").skip();
     assert_eq!(args_of(&skip), vec!["am", "--skip"]);
 }
+
+#[test]
+fn verify_commit_single() {
+    let mut c = VerifyCommitCommand::new();
+    c.commit("HEAD");
+    assert_eq!(args_of(&c), vec!["verify-commit", "HEAD"]);
+}
+
+#[test]
+fn verify_commit_raw_verbose_multiple() {
+    let mut c = VerifyCommitCommand::new();
+    c.commit("HEAD").commit("HEAD~1").raw().verbose();
+    assert_eq!(
+        args_of(&c),
+        vec!["verify-commit", "--raw", "-v", "HEAD", "HEAD~1"]
+    );
+}
+
+#[test]
+fn verify_tag_single() {
+    let mut c = VerifyTagCommand::new();
+    c.tag("v1.0.0");
+    assert_eq!(args_of(&c), vec!["verify-tag", "v1.0.0"]);
+}
+
+#[test]
+fn verify_tag_raw_verbose_multiple() {
+    let mut c = VerifyTagCommand::new();
+    c.tag("v1.0.0").tag("v1.1.0").raw().verbose();
+    assert_eq!(
+        args_of(&c),
+        vec!["verify-tag", "--raw", "-v", "v1.0.0", "v1.1.0"]
+    );
+}

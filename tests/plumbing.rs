@@ -1,9 +1,10 @@
 //! Integration tests for plumbing commands and typed parsers.
 
 use git_spawn::{
-    AmCommand, ApplyCommand, CatFileCommand, DescribeCommand, ForEachRefCommand,
+    AmCommand, ApplyCommand, CatFileCommand, DescribeCommand, Error, ForEachRefCommand,
     FormatPatchCommand, GitCommand, HashObjectCommand, LogCommand, LsFilesCommand, LsTreeCommand,
     Repository, RevParseCommand, ShowRefCommand, SymbolicRefCommand, UpdateRefCommand,
+    VerifyCommitCommand, VerifyTagCommand,
 };
 
 use git_spawn::command::reset::ResetMode;
@@ -531,4 +532,62 @@ async fn am_without_a_mailbox_is_rejected() {
     let mut cmd = AmCommand::new();
     cmd.current_dir(repo.path());
     assert!(cmd.execute().await.is_err());
+}
+
+#[tokio::test]
+async fn verify_commit_rejects_an_unsigned_commit() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    // The fixture commit carries no signature, so verification must fail
+    // rather than report success. No signing key is needed for this
+    // direction, which keeps the test portable across CI runners.
+    let mut cmd = VerifyCommitCommand::new();
+    cmd.current_dir(repo.path()).commit("HEAD");
+    let err = cmd.execute().await.unwrap_err();
+    assert!(
+        matches!(err, Error::CommandFailed { .. }),
+        "expected a non-zero exit, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn verify_commit_without_a_commit_is_rejected() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let mut cmd = VerifyCommitCommand::new();
+    cmd.current_dir(repo.path());
+    let err = cmd.execute().await.unwrap_err();
+    assert!(
+        matches!(err, Error::InvalidConfig { .. }),
+        "expected an invalid-config error, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn verify_tag_rejects_an_unsigned_tag() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    repo.tag()
+        .name("v0.1.0")
+        .message("unsigned")
+        .execute()
+        .await
+        .unwrap();
+
+    let mut cmd = VerifyTagCommand::new();
+    cmd.current_dir(repo.path()).tag("v0.1.0");
+    let err = cmd.execute().await.unwrap_err();
+    assert!(
+        matches!(err, Error::CommandFailed { .. }),
+        "expected a non-zero exit, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn verify_tag_without_a_tag_is_rejected() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let mut cmd = VerifyTagCommand::new();
+    cmd.current_dir(repo.path());
+    let err = cmd.execute().await.unwrap_err();
+    assert!(
+        matches!(err, Error::InvalidConfig { .. }),
+        "expected an invalid-config error, got {err:?}"
+    );
 }
