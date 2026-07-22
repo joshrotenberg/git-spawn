@@ -2,11 +2,12 @@
 
 use git_spawn::{
     AmCommand, ApplyCommand, CatFileCommand, CherryCommand, DescribeCommand, Error,
-    ForEachRefCommand, FormatPatchCommand, GitCommand, HashObjectCommand, LogCommand,
-    LsFilesCommand, LsTreeCommand, Repository, RevParseCommand, ShowRefCommand, SymbolicRefCommand,
-    UpdateRefCommand, VerifyCommitCommand, VerifyTagCommand,
+    ForEachRefCommand, FormatPatchCommand, GitCommand, HashObjectCommand, InterpretTrailersCommand,
+    LogCommand, LsFilesCommand, LsTreeCommand, Repository, RevParseCommand, ShowRefCommand,
+    SymbolicRefCommand, UpdateRefCommand, VerifyCommitCommand, VerifyTagCommand,
 };
 
+use git_spawn::command::interpret_trailers::TrailerIfExists;
 use git_spawn::command::reset::ResetMode;
 
 mod common;
@@ -673,4 +674,109 @@ mod cherry_parser {
         assert_eq!(entries.len(), 1, "unexpected entries: {entries:?}");
         assert_eq!(entries[0].status, CherryStatus::Upstream);
     }
+}
+
+#[tokio::test]
+async fn interpret_trailers_appends_a_trailer_to_stdout() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let msg = repo.path().join("MSG");
+    std::fs::write(&msg, "subject line\n\nbody text\n").unwrap();
+
+    let mut cmd = InterpretTrailersCommand::new();
+    cmd.current_dir(repo.path())
+        .trailer("Signed-off-by", "A U Thor <author@example.com>")
+        .file(&msg);
+    let out = cmd.execute().await.unwrap();
+
+    assert!(
+        out.stdout_str()
+            .contains("Signed-off-by: A U Thor <author@example.com>"),
+        "trailer missing from output: {}",
+        out.stdout_str()
+    );
+    // Without --in-place the file itself is untouched.
+    let on_disk = std::fs::read_to_string(&msg).unwrap();
+    assert!(!on_disk.contains("Signed-off-by"), "file was rewritten");
+}
+
+#[tokio::test]
+async fn interpret_trailers_in_place_rewrites_the_file() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let msg = repo.path().join("MSG");
+    std::fs::write(&msg, "subject line\n\nbody text\n").unwrap();
+
+    let mut cmd = InterpretTrailersCommand::new();
+    cmd.current_dir(repo.path())
+        .in_place()
+        .trailer("Reviewed-by", "R Viewer <r@example.com>")
+        .file(&msg);
+    cmd.execute().await.unwrap();
+
+    let on_disk = std::fs::read_to_string(&msg).unwrap();
+    assert!(
+        on_disk.contains("Reviewed-by: R Viewer <r@example.com>"),
+        "trailer missing from rewritten file: {on_disk}"
+    );
+}
+
+#[tokio::test]
+async fn interpret_trailers_parse_reports_only_existing_trailers() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let msg = repo.path().join("MSG");
+    std::fs::write(
+        &msg,
+        "subject line\n\nbody text\n\nSigned-off-by: A U Thor <author@example.com>\n",
+    )
+    .unwrap();
+
+    let mut cmd = InterpretTrailersCommand::new();
+    cmd.current_dir(repo.path()).parse().file(&msg);
+    let out = cmd.execute().await.unwrap();
+
+    let stdout = out.stdout_str();
+    assert!(
+        stdout.contains("Signed-off-by: A U Thor <author@example.com>"),
+        "existing trailer missing: {stdout}"
+    );
+    assert!(
+        !stdout.contains("subject line") && !stdout.contains("body text"),
+        "--parse should drop the message body: {stdout}"
+    );
+}
+
+#[tokio::test]
+async fn interpret_trailers_if_exists_do_nothing_keeps_the_original() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let msg = repo.path().join("MSG");
+    std::fs::write(
+        &msg,
+        "subject line\n\nbody text\n\nSigned-off-by: First <first@example.com>\n",
+    )
+    .unwrap();
+
+    let mut cmd = InterpretTrailersCommand::new();
+    cmd.current_dir(repo.path())
+        .if_exists(TrailerIfExists::DoNothing)
+        .trailer("Signed-off-by", "Second <second@example.com>")
+        .file(&msg);
+    let out = cmd.execute().await.unwrap();
+
+    let stdout = out.stdout_str();
+    assert!(
+        stdout.contains("Signed-off-by: First <first@example.com>"),
+        "original trailer lost: {stdout}"
+    );
+    assert!(
+        !stdout.contains("second@example.com"),
+        "doNothing still added the trailer: {stdout}"
+    );
+}
+
+#[tokio::test]
+async fn interpret_trailers_without_a_file_is_rejected() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let mut cmd = InterpretTrailersCommand::new();
+    cmd.current_dir(repo.path())
+        .trailer("Signed-off-by", "A U Thor <author@example.com>");
+    assert!(cmd.execute().await.is_err());
 }
