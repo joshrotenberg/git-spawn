@@ -35,15 +35,17 @@
 
 use crate::command::{
     GitCommand, add::AddCommand, bisect::BisectCommand, branch::BranchCommand,
-    checkout::CheckoutCommand, cherry_pick::CherryPickCommand, clone::CloneCommand,
-    commit::CommitCommand, config::ConfigCommand, describe::DescribeCommand, diff::DiffCommand,
-    fetch::FetchCommand, grep::GrepCommand, init::InitCommand, log::LogCommand,
-    ls_files::LsFilesCommand, ls_tree::LsTreeCommand, merge::MergeCommand, mv::MvCommand,
-    notes::NotesCommand, pull::PullCommand, push::PushCommand, rebase::RebaseCommand,
-    reflog::ReflogCommand, remote::RemoteCommand, reset::ResetCommand, restore::RestoreCommand,
+    cat_file::CatFileCommand, checkout::CheckoutCommand, cherry_pick::CherryPickCommand,
+    clone::CloneCommand, commit::CommitCommand, config::ConfigCommand, describe::DescribeCommand,
+    diff::DiffCommand, fetch::FetchCommand, for_each_ref::ForEachRefCommand, grep::GrepCommand,
+    hash_object::HashObjectCommand, init::InitCommand, log::LogCommand, ls_files::LsFilesCommand,
+    ls_tree::LsTreeCommand, merge::MergeCommand, mv::MvCommand, notes::NotesCommand,
+    pull::PullCommand, push::PushCommand, rebase::RebaseCommand, reflog::ReflogCommand,
+    remote::RemoteCommand, reset::ResetCommand, restore::RestoreCommand,
     rev_parse::RevParseCommand, rm::RmCommand, show::ShowCommand, show_ref::ShowRefCommand,
     stash::StashCommand, status::StatusCommand, submodule::SubmoduleCommand, switch::SwitchCommand,
-    symbolic_ref::SymbolicRefCommand, tag::TagCommand, worktree::WorktreeCommand,
+    symbolic_ref::SymbolicRefCommand, tag::TagCommand, update_ref::UpdateRefCommand,
+    worktree::WorktreeCommand,
 };
 use crate::error::{Error, Result};
 use std::path::{Path, PathBuf};
@@ -396,6 +398,42 @@ impl Repository {
         c.current_dir(&self.path);
         c
     }
+
+    /// Build a [`CatFileCommand`] scoped to this repository.
+    ///
+    /// Construct `action` with [`CatFileCommand::pretty_print`],
+    /// [`CatFileCommand::object_type`], [`CatFileCommand::size`], or
+    /// [`CatFileCommand::exists`].
+    #[must_use]
+    pub fn cat_file(&self, action: CatFileCommand) -> CatFileCommand {
+        let mut c = action;
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`HashObjectCommand`] scoped to this repository.
+    #[must_use]
+    pub fn hash_object(&self) -> HashObjectCommand {
+        let mut c = HashObjectCommand::new();
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build a [`ForEachRefCommand`] scoped to this repository.
+    #[must_use]
+    pub fn for_each_ref(&self) -> ForEachRefCommand {
+        let mut c = ForEachRefCommand::new();
+        c.current_dir(&self.path);
+        c
+    }
+
+    /// Build an [`UpdateRefCommand`] scoped to this repository.
+    #[must_use]
+    pub fn update_ref(&self) -> UpdateRefCommand {
+        let mut c = UpdateRefCommand::new();
+        c.current_dir(&self.path);
+        c
+    }
 }
 
 #[cfg(test)]
@@ -413,5 +451,24 @@ mod tests {
     fn new_unchecked_does_not_check() {
         let repo = Repository::new_unchecked("/definitely/not/here");
         assert_eq!(repo.path(), Path::new("/definitely/not/here"));
+    }
+
+    #[test]
+    fn object_and_ref_accessors_scope_current_dir() {
+        let repo = Repository::new_unchecked("/tmp/some-repo");
+        let want = Some(PathBuf::from("/tmp/some-repo"));
+
+        let cat = repo.cat_file(CatFileCommand::pretty_print("HEAD"));
+        assert_eq!(cat.get_executor().cwd, want);
+        assert_eq!(cat.build_command_args(), vec!["cat-file", "-p", "HEAD"]);
+
+        let hash = repo.hash_object();
+        assert_eq!(hash.get_executor().cwd, want);
+
+        let each = repo.for_each_ref();
+        assert_eq!(each.get_executor().cwd, want);
+
+        let update = repo.update_ref();
+        assert_eq!(update.get_executor().cwd, want);
     }
 }

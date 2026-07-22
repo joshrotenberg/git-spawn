@@ -124,6 +124,46 @@ async fn repository_plumbing_accessors_are_scoped() {
 }
 
 #[tokio::test]
+async fn repository_object_and_ref_accessors_are_scoped() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let blob_path = repo.path().join("blobby.txt");
+    std::fs::write(&blob_path, "some bytes\n").unwrap();
+
+    // hash-object writes the blob, cat-file reads it back.
+    let sha = repo
+        .hash_object()
+        .write()
+        .path(&blob_path)
+        .execute()
+        .await
+        .unwrap();
+    assert_eq!(sha.len(), 40);
+    let blob = repo
+        .cat_file(CatFileCommand::pretty_print(&sha))
+        .execute()
+        .await
+        .unwrap();
+    assert_eq!(blob, "some bytes");
+
+    // update-ref creates a ref, for-each-ref lists it.
+    let head = repo.rev_parse().arg_str("HEAD").execute().await.unwrap();
+    repo.update_ref()
+        .ref_name("refs/heads/shadow")
+        .new_value(&head)
+        .execute()
+        .await
+        .unwrap();
+    let listed = repo
+        .for_each_ref()
+        .pattern("refs/heads/*")
+        .format("%(refname:short)")
+        .execute()
+        .await
+        .unwrap();
+    assert!(listed.stdout_str().lines().any(|l| l == "shadow"));
+}
+
+#[tokio::test]
 async fn update_ref_creates_and_deletes() {
     let (_tmp, repo) = make_repo_with_commit().await;
     // Resolve HEAD to pass as new value.
