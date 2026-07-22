@@ -10,6 +10,7 @@
 //! # Modules
 //!
 //! - [`bisect`] — classify `git bisect` output into a [`bisect::BisectResult`]
+//! - [`cherry`] — parse `git cherry` output into [`cherry::CherryEntry`] entries
 //! - [`cherry_pick`] — classify `git cherry-pick` output into a [`cherry_pick::CherryPickResult`]
 //! - [`commit`] — parse `git commit` output into a [`commit::CommitResult`]
 //! - [`diff`] — parse `git diff --name-status -z`, `--numstat -z`, and `--stat` output
@@ -26,6 +27,7 @@
 //! - [`submodule`] — parse `git submodule status` output into [`submodule::SubmoduleEntry`] entries
 
 pub mod bisect;
+pub mod cherry;
 pub mod cherry_pick;
 pub mod commit;
 pub mod diff;
@@ -41,6 +43,7 @@ pub mod status;
 pub mod submodule;
 
 pub use bisect::{BisectResult, BisectStatus, parse_bisect};
+pub use cherry::{CherryEntry, CherryStatus, parse_cherry};
 pub use cherry_pick::{CherryPickResult, parse_cherry_pick};
 pub use commit::{CommitResult, parse_commit};
 pub use diff::{

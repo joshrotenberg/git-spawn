@@ -1,10 +1,10 @@
 //! Integration tests for plumbing commands and typed parsers.
 
 use git_spawn::{
-    AmCommand, ApplyCommand, CatFileCommand, DescribeCommand, Error, ForEachRefCommand,
-    FormatPatchCommand, GitCommand, HashObjectCommand, LogCommand, LsFilesCommand, LsTreeCommand,
-    Repository, RevParseCommand, ShowRefCommand, SymbolicRefCommand, UpdateRefCommand,
-    VerifyCommitCommand, VerifyTagCommand,
+    AmCommand, ApplyCommand, CatFileCommand, CherryCommand, DescribeCommand, Error,
+    ForEachRefCommand, FormatPatchCommand, GitCommand, HashObjectCommand, LogCommand,
+    LsFilesCommand, LsTreeCommand, Repository, RevParseCommand, ShowRefCommand, SymbolicRefCommand,
+    UpdateRefCommand, VerifyCommitCommand, VerifyTagCommand,
 };
 
 use git_spawn::command::reset::ResetMode;
@@ -590,4 +590,87 @@ async fn verify_tag_without_a_tag_is_rejected() {
         matches!(err, Error::InvalidConfig { .. }),
         "expected an invalid-config error, got {err:?}"
     );
+}
+
+/// Stage `file` with `content` and commit it on the current branch.
+async fn commit_file(repo: &Repository, file: &str, content: &str, message: &str) {
+    std::fs::write(repo.path().join(file), content).unwrap();
+    repo.add().path(file).execute().await.unwrap();
+    repo.commit().message(message).execute().await.unwrap();
+}
+
+#[tokio::test]
+async fn cherry_marks_a_commit_missing_upstream() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    repo.checkout().create("feature").execute().await.unwrap();
+    commit_file(&repo, "feature.txt", "feature\n", "add feature").await;
+
+    let mut cmd = CherryCommand::new();
+    cmd.current_dir(repo.path())
+        .upstream("main")
+        .head("feature")
+        .verbose();
+    let out = cmd.execute().await.unwrap();
+    let stdout = out.stdout_str();
+    assert!(
+        stdout.starts_with("+ "),
+        "expected an unapplied commit marker: {stdout}"
+    );
+    assert!(
+        stdout.contains("add feature"),
+        "-v did not include the subject: {stdout}"
+    );
+}
+
+#[tokio::test]
+async fn cherry_head_without_an_upstream_is_rejected() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let mut cmd = CherryCommand::new();
+    cmd.current_dir(repo.path()).head("feature");
+    assert!(cmd.execute().await.is_err());
+}
+
+#[tokio::test]
+async fn cherry_limit_without_a_head_is_rejected() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let mut cmd = CherryCommand::new();
+    cmd.current_dir(repo.path()).upstream("main").limit("v1.0");
+    assert!(cmd.execute().await.is_err());
+}
+
+#[cfg(feature = "parse")]
+mod cherry_parser {
+    use super::*;
+    use git_spawn::parse::CherryStatus;
+
+    #[tokio::test]
+    async fn entries_flip_to_upstream_once_the_patch_is_applied() {
+        let (_tmp, repo) = make_repo_with_commit().await;
+        repo.checkout().create("feature").execute().await.unwrap();
+        commit_file(&repo, "feature.txt", "feature\n", "add feature").await;
+
+        let mut cmd = CherryCommand::new();
+        cmd.current_dir(repo.path())
+            .upstream("main")
+            .head("feature")
+            .verbose();
+
+        let entries = cmd.parse_entries(&cmd.execute().await.unwrap());
+        assert_eq!(entries.len(), 1, "unexpected entries: {entries:?}");
+        assert_eq!(entries[0].status, CherryStatus::NotUpstream);
+        assert_eq!(entries[0].subject.as_deref(), Some("add feature"));
+
+        // Apply the same patch on main; git cherry then recognizes it as an
+        // equivalent commit and flips the marker. main has to move first:
+        // cherry-picking onto an unchanged main reproduces the commit
+        // verbatim, which makes feature an ancestor and empties the report.
+        let sha = entries[0].sha.clone();
+        repo.checkout().target("main").execute().await.unwrap();
+        commit_file(&repo, "other.txt", "other\n", "add other").await;
+        repo.cherry_pick().commit(&sha).execute().await.unwrap();
+
+        let entries = cmd.parse_entries(&cmd.execute().await.unwrap());
+        assert_eq!(entries.len(), 1, "unexpected entries: {entries:?}");
+        assert_eq!(entries[0].status, CherryStatus::Upstream);
+    }
 }
