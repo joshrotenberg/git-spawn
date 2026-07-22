@@ -1,9 +1,9 @@
 //! Integration tests for plumbing commands and typed parsers.
 
 use git_spawn::{
-    ApplyCommand, CatFileCommand, DescribeCommand, ForEachRefCommand, FormatPatchCommand,
-    GitCommand, HashObjectCommand, LsFilesCommand, LsTreeCommand, Repository, RevParseCommand,
-    ShowRefCommand, SymbolicRefCommand, UpdateRefCommand,
+    AmCommand, ApplyCommand, CatFileCommand, DescribeCommand, ForEachRefCommand,
+    FormatPatchCommand, GitCommand, HashObjectCommand, LogCommand, LsFilesCommand, LsTreeCommand,
+    Repository, RevParseCommand, ShowRefCommand, SymbolicRefCommand, UpdateRefCommand,
 };
 
 use git_spawn::command::reset::ResetMode;
@@ -437,6 +437,98 @@ async fn apply_check_rejects_a_patch_that_does_not_apply() {
 async fn apply_without_a_patch_is_rejected() {
     let (_tmp, repo) = make_repo_with_commit().await;
     let mut cmd = ApplyCommand::new();
+    cmd.current_dir(repo.path());
+    assert!(cmd.execute().await.is_err());
+}
+
+#[tokio::test]
+async fn am_replays_a_formatted_patch_as_a_commit() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    std::fs::write(repo.path().join("second.txt"), "two\n").unwrap();
+    repo.add().path("second.txt").execute().await.unwrap();
+    repo.commit().message("second").execute().await.unwrap();
+
+    let out_dir = repo.path().join("patches");
+    let mut fmt = FormatPatchCommand::new();
+    fmt.current_dir(repo.path())
+        .rev_spec("HEAD~1..HEAD")
+        .output_dir(&out_dir);
+    let paths = fmt.execute().await.unwrap();
+
+    // Drop the commit so the mailbox is the only record of the change.
+    repo.reset()
+        .mode(ResetMode::Hard)
+        .commit("HEAD~1")
+        .execute()
+        .await
+        .unwrap();
+    assert!(!repo.path().join("second.txt").exists());
+
+    let mut cmd = AmCommand::new();
+    cmd.current_dir(repo.path()).mailbox(&paths[0]);
+    cmd.execute().await.unwrap();
+
+    let restored = std::fs::read_to_string(repo.path().join("second.txt")).unwrap();
+    assert_eq!(restored, "two\n");
+
+    // Unlike `apply`, `am` records a commit carrying the patch's subject.
+    let mut log = LogCommand::new();
+    log.current_dir(repo.path()).max_count(1).oneline();
+    let subject = log.execute().await.unwrap().stdout_str().to_string();
+    assert!(
+        subject.contains("second"),
+        "am did not record the patch subject: {subject}"
+    );
+}
+
+#[tokio::test]
+async fn am_abort_restores_the_branch() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let mut rev = RevParseCommand::new();
+    rev.current_dir(repo.path()).arg_str("HEAD");
+    let before = rev.execute().await.unwrap();
+
+    // A mailbox whose diff touches a file that does not exist here, so `am`
+    // stops mid-session and leaves the repository in an `am` state.
+    let mailbox = repo.path().join("0001-bogus.patch");
+    std::fs::write(
+        &mailbox,
+        "From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001\n\
+         From: Test <test@example.com>\n\
+         Date: Mon, 1 Jan 2024 00:00:00 +0000\n\
+         Subject: [PATCH] bogus\n\
+         \n\
+         ---\n\
+         missing.txt | 2 +-\n\
+         \n\
+         diff --git a/missing.txt b/missing.txt\n\
+         --- a/missing.txt\n\
+         +++ b/missing.txt\n\
+         @@ -1 +1 @@\n\
+         -old\n\
+         +new\n\
+         -- \n\
+         2.43.0\n\
+         \n",
+    )
+    .unwrap();
+
+    let mut cmd = AmCommand::new();
+    cmd.current_dir(repo.path()).mailbox(&mailbox);
+    assert!(cmd.execute().await.is_err(), "expected am to stop");
+
+    let mut abort = AmCommand::new();
+    abort.current_dir(repo.path()).abort();
+    abort.execute().await.unwrap();
+
+    let after = rev.execute().await.unwrap();
+    assert_eq!(before, after, "am --abort did not restore HEAD");
+}
+
+#[tokio::test]
+async fn am_without_a_mailbox_is_rejected() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let mut cmd = AmCommand::new();
     cmd.current_dir(repo.path());
     assert!(cmd.execute().await.is_err());
 }

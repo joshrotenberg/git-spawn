@@ -167,8 +167,8 @@ pub mod tags;
 pub mod workflow;
 
 pub use command::{
-    CommandExecutor, CommandOutput, GitCommand, add::AddCommand, apply::ApplyCommand,
-    bisect::BisectCommand, branch::BranchCommand, cat_file::CatFileCommand,
+    CommandExecutor, CommandOutput, GitCommand, add::AddCommand, am::AmCommand,
+    apply::ApplyCommand, bisect::BisectCommand, branch::BranchCommand, cat_file::CatFileCommand,
     checkout::CheckoutCommand, cherry_pick::CherryPickCommand, clone::CloneCommand,
     commit::CommitCommand, config::ConfigCommand, describe::DescribeCommand, diff::DiffCommand,
     fetch::FetchCommand, for_each_ref::ForEachRefCommand, format_patch::FormatPatchCommand,
