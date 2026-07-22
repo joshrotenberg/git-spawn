@@ -63,6 +63,7 @@ use tokio::process::Command as TokioCommand;
 use tracing::{debug, error, instrument, trace, warn};
 
 pub mod add;
+pub mod apply;
 pub mod bisect;
 pub mod branch;
 pub mod cat_file;

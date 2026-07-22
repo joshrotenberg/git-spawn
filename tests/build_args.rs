@@ -454,3 +454,37 @@ fn format_patch_output_dir_numbered_signoff() {
         ]
     );
 }
+
+#[test]
+fn apply_single_patch() {
+    let mut c = ApplyCommand::new();
+    c.patch("/tmp/p/0001-fix.patch");
+    assert_eq!(args_of(&c), vec!["apply", "/tmp/p/0001-fix.patch"]);
+}
+
+#[test]
+fn apply_check_reverse_three_way_index_cached_strip() {
+    let mut c = ApplyCommand::new();
+    c.patch("a.patch")
+        .patch("b.patch")
+        .check()
+        .reverse()
+        .three_way()
+        .index()
+        .cached()
+        .strip(2);
+    assert_eq!(
+        args_of(&c),
+        vec![
+            "apply",
+            "--check",
+            "--reverse",
+            "--3way",
+            "--index",
+            "--cached",
+            "-p2",
+            "a.patch",
+            "b.patch"
+        ]
+    );
+}

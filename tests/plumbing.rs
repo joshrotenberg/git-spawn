@@ -1,10 +1,12 @@
 //! Integration tests for plumbing commands and typed parsers.
 
 use git_spawn::{
-    CatFileCommand, DescribeCommand, ForEachRefCommand, FormatPatchCommand, GitCommand,
-    HashObjectCommand, LsFilesCommand, LsTreeCommand, Repository, RevParseCommand, ShowRefCommand,
-    SymbolicRefCommand, UpdateRefCommand,
+    ApplyCommand, CatFileCommand, DescribeCommand, ForEachRefCommand, FormatPatchCommand,
+    GitCommand, HashObjectCommand, LsFilesCommand, LsTreeCommand, Repository, RevParseCommand,
+    ShowRefCommand, SymbolicRefCommand, UpdateRefCommand,
 };
+
+use git_spawn::command::reset::ResetMode;
 
 mod common;
 
@@ -381,6 +383,60 @@ async fn format_patch_writes_one_file_per_commit() {
 async fn format_patch_without_rev_spec_is_rejected() {
     let (_tmp, repo) = make_repo_with_commit().await;
     let mut cmd = FormatPatchCommand::new();
+    cmd.current_dir(repo.path());
+    assert!(cmd.execute().await.is_err());
+}
+
+#[tokio::test]
+async fn apply_replays_a_formatted_patch() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    std::fs::write(repo.path().join("second.txt"), "two\n").unwrap();
+    repo.add().path("second.txt").execute().await.unwrap();
+    repo.commit().message("second").execute().await.unwrap();
+
+    let out_dir = repo.path().join("patches");
+    let mut fmt = FormatPatchCommand::new();
+    fmt.current_dir(repo.path())
+        .rev_spec("HEAD~1..HEAD")
+        .output_dir(&out_dir);
+    let paths = fmt.execute().await.unwrap();
+
+    // Drop the commit so the patch is the only record of the change.
+    repo.reset()
+        .mode(ResetMode::Hard)
+        .commit("HEAD~1")
+        .execute()
+        .await
+        .unwrap();
+    assert!(!repo.path().join("second.txt").exists());
+
+    let mut cmd = ApplyCommand::new();
+    cmd.current_dir(repo.path()).patch(&paths[0]);
+    cmd.execute().await.unwrap();
+
+    let restored = std::fs::read_to_string(repo.path().join("second.txt")).unwrap();
+    assert_eq!(restored, "two\n");
+}
+
+#[tokio::test]
+async fn apply_check_rejects_a_patch_that_does_not_apply() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let patch = repo.path().join("bogus.patch");
+    std::fs::write(
+        &patch,
+        "--- a/missing.txt\n+++ b/missing.txt\n@@ -1 +1 @@\n-old\n+new\n",
+    )
+    .unwrap();
+
+    let mut cmd = ApplyCommand::new();
+    cmd.current_dir(repo.path()).patch(&patch).check();
+    assert!(cmd.execute().await.is_err());
+}
+
+#[tokio::test]
+async fn apply_without_a_patch_is_rejected() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let mut cmd = ApplyCommand::new();
     cmd.current_dir(repo.path());
     assert!(cmd.execute().await.is_err());
 }
