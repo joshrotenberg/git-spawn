@@ -1074,3 +1074,139 @@ async fn hooks_honor_core_hooks_path() {
     assert_eq!(hooks.len(), 1, "only the custom dir is listed");
     assert_eq!(hooks[0].name, "pre-commit");
 }
+
+// ---------- patches ----------
+
+use git_spawn::command::reset::ResetMode;
+
+/// Add `name` with `body` as a second commit, so `HEAD~1..HEAD` selects it.
+async fn commit_file(repo: &Repository, name: &str, body: &str) {
+    std::fs::write(repo.path().join(name), body).unwrap();
+    repo.add().path(name).execute().await.unwrap();
+    repo.commit().message(name).execute().await.unwrap();
+}
+
+#[tokio::test]
+async fn patches_format_writes_one_file_per_commit() {
+    let (_tmp, repo) = make_repo().await;
+    make_initial_commit(&repo).await;
+    commit_file(&repo, "second.txt", "two\n").await;
+
+    let paths = repo
+        .patches()
+        .format("HEAD~1..HEAD")
+        .output_dir("patches")
+        .execute()
+        .await
+        .expect("format");
+
+    assert_eq!(paths.len(), 1, "unexpected patch list: {paths:?}");
+    assert!(
+        paths[0].is_absolute(),
+        "relative output dir should resolve against the repo root: {paths:?}"
+    );
+    assert!(paths[0].exists(), "reported a missing path: {paths:?}");
+    let body = std::fs::read_to_string(&paths[0]).unwrap();
+    assert!(body.contains("second.txt"), "patch body: {body}");
+}
+
+#[tokio::test]
+async fn patches_apply_restores_the_working_tree_without_committing() {
+    let (_tmp, repo) = make_repo().await;
+    make_initial_commit(&repo).await;
+    commit_file(&repo, "second.txt", "two\n").await;
+
+    let paths = repo
+        .patches()
+        .format("HEAD~1..HEAD")
+        .output_dir(repo.path().join("patches"))
+        .execute()
+        .await
+        .expect("format");
+
+    // Drop the commit so the patch is the only record of the change.
+    repo.reset()
+        .mode(ResetMode::Hard)
+        .commit("HEAD~1")
+        .execute()
+        .await
+        .unwrap();
+    assert!(!repo.path().join("second.txt").exists());
+
+    repo.patches().apply(&paths[0]).await.expect("apply");
+
+    assert_eq!(
+        std::fs::read_to_string(repo.path().join("second.txt")).unwrap(),
+        "two\n"
+    );
+    let subject = repo
+        .log()
+        .max_count(1)
+        .oneline()
+        .execute()
+        .await
+        .unwrap()
+        .stdout_str()
+        .to_string();
+    assert!(
+        !subject.contains("second.txt"),
+        "apply must not record a commit: {subject}"
+    );
+}
+
+#[tokio::test]
+async fn patches_am_replays_the_patch_as_a_commit() {
+    let (_tmp, repo) = make_repo().await;
+    make_initial_commit(&repo).await;
+    commit_file(&repo, "second.txt", "two\n").await;
+
+    let paths = repo
+        .patches()
+        .format("HEAD~1..HEAD")
+        .output_dir(repo.path().join("patches"))
+        .execute()
+        .await
+        .expect("format");
+
+    repo.reset()
+        .mode(ResetMode::Hard)
+        .commit("HEAD~1")
+        .execute()
+        .await
+        .unwrap();
+
+    repo.patches().am(&paths[0]).await.expect("am");
+
+    assert_eq!(
+        std::fs::read_to_string(repo.path().join("second.txt")).unwrap(),
+        "two\n"
+    );
+    let subject = repo
+        .log()
+        .max_count(1)
+        .oneline()
+        .execute()
+        .await
+        .unwrap()
+        .stdout_str()
+        .to_string();
+    assert!(
+        subject.contains("second.txt"),
+        "am should record the patch subject: {subject}"
+    );
+}
+
+#[tokio::test]
+async fn patches_apply_rejects_a_patch_that_does_not_apply() {
+    let (_tmp, repo) = make_repo().await;
+    make_initial_commit(&repo).await;
+
+    let patch = repo.path().join("bogus.patch");
+    std::fs::write(
+        &patch,
+        "--- a/missing.txt\n+++ b/missing.txt\n@@ -1 +1 @@\n-old\n+new\n",
+    )
+    .unwrap();
+
+    assert!(repo.patches().apply(&patch).await.is_err());
+}
