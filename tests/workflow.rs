@@ -933,3 +933,144 @@ async fn search_without_pattern_errors() {
 
     assert!(repo.search().execute().await.is_err());
 }
+
+// ---------- hooks ----------
+
+#[tokio::test]
+async fn hooks_list_strips_sample_suffix_and_marks_disabled() {
+    use git_spawn::command::config::ConfigCommand;
+
+    // Point at a controlled, initially empty hooks directory so the listing
+    // does not depend on whatever sample or template hooks the host git ships.
+    let (_tmp, repo) = make_repo().await;
+    let dir = repo.path().join("hooks-under-test");
+    std::fs::create_dir_all(&dir).unwrap();
+    repo.config(ConfigCommand::set("core.hooksPath", dir.to_str().unwrap()))
+        .execute()
+        .await
+        .unwrap();
+
+    // A sample git ships is executable but only advisory: report it under its
+    // bare name, disabled.
+    std::fs::write(dir.join("pre-commit.sample"), "#!/bin/sh\n").unwrap();
+
+    let hooks = repo.hooks().list().await.unwrap();
+    assert_eq!(hooks.len(), 1);
+    assert_eq!(hooks[0].name, "pre-commit");
+    assert!(!hooks[0].enabled, "a sample is never enabled");
+}
+
+#[tokio::test]
+async fn hooks_install_then_list_reports_enabled() {
+    let (_tmp, repo) = make_repo().await;
+
+    repo.hooks()
+        .install("pre-commit", "#!/bin/sh\nexit 0\n")
+        .await
+        .unwrap();
+
+    let hooks = repo.hooks().list().await.unwrap();
+    let pre_commit = hooks
+        .iter()
+        .find(|h| h.name == "pre-commit")
+        .expect("installed pre-commit is listed");
+    assert!(pre_commit.enabled, "an installed hook is enabled");
+    let body = std::fs::read_to_string(&pre_commit.path).unwrap();
+    assert_eq!(body, "#!/bin/sh\nexit 0\n");
+}
+
+#[tokio::test]
+async fn hooks_remove_deletes_the_file() {
+    use git_spawn::command::config::ConfigCommand;
+
+    let (_tmp, repo) = make_repo().await;
+
+    // Point at a controlled, initially empty hooks directory so removal is not
+    // masked by a `pre-push.sample` that git's default template ships: that
+    // sample would be reported under the bare name `pre-push` and defeat the
+    // "removed hook is gone" assertion in clean CI environments.
+    let dir = repo.path().join("hooks-under-test");
+    std::fs::create_dir_all(&dir).unwrap();
+    repo.config(ConfigCommand::set("core.hooksPath", dir.to_str().unwrap()))
+        .execute()
+        .await
+        .unwrap();
+
+    repo.hooks()
+        .install("pre-push", "#!/bin/sh\n")
+        .await
+        .unwrap();
+    assert!(
+        repo.hooks()
+            .list()
+            .await
+            .unwrap()
+            .iter()
+            .any(|h| h.name == "pre-push")
+    );
+
+    repo.hooks().remove("pre-push").await.unwrap();
+    assert!(
+        !repo
+            .hooks()
+            .list()
+            .await
+            .unwrap()
+            .iter()
+            .any(|h| h.name == "pre-push"),
+        "removed hook is gone"
+    );
+
+    // Removing a hook that does not exist surfaces an error.
+    assert!(repo.hooks().remove("pre-push").await.is_err());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn hooks_disable_then_enable_toggles_executable() {
+    let (_tmp, repo) = make_repo().await;
+
+    repo.hooks()
+        .install("commit-msg", "#!/bin/sh\n")
+        .await
+        .unwrap();
+
+    repo.hooks().disable("commit-msg").await.unwrap();
+    let disabled = repo.hooks().list().await.unwrap();
+    let h = disabled.iter().find(|h| h.name == "commit-msg").unwrap();
+    assert!(!h.enabled, "disabled hook is not executable");
+
+    repo.hooks().enable("commit-msg").await.unwrap();
+    let enabled = repo.hooks().list().await.unwrap();
+    let h = enabled.iter().find(|h| h.name == "commit-msg").unwrap();
+    assert!(h.enabled, "re-enabled hook is executable again");
+}
+
+#[tokio::test]
+async fn hooks_honor_core_hooks_path() {
+    use git_spawn::command::config::ConfigCommand;
+
+    let (_tmp, repo) = make_repo().await;
+    let custom = repo.path().join("my-hooks");
+
+    repo.config(ConfigCommand::set(
+        "core.hooksPath",
+        custom.to_str().unwrap(),
+    ))
+    .execute()
+    .await
+    .unwrap();
+
+    repo.hooks()
+        .install("pre-commit", "#!/bin/sh\n")
+        .await
+        .unwrap();
+
+    assert!(
+        custom.join("pre-commit").exists(),
+        "install writes into core.hooksPath"
+    );
+    let hooks = repo.hooks().list().await.unwrap();
+    assert_eq!(hooks.len(), 1, "only the custom dir is listed");
+    assert_eq!(hooks[0].name, "pre-commit");
+}
