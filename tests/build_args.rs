@@ -427,3 +427,30 @@ fn escape_hatch_arg_appends_after_typed_args() {
     assert_eq!(args_of(&c), vec!["status"]);
     assert_eq!(c.executor.raw_args, vec!["--porcelain=v2"]);
 }
+
+#[test]
+fn format_patch_range() {
+    let mut c = FormatPatchCommand::new();
+    c.rev_spec("HEAD~3..HEAD");
+    assert_eq!(args_of(&c), vec!["format-patch", "HEAD~3..HEAD"]);
+}
+
+#[test]
+fn format_patch_output_dir_numbered_signoff() {
+    let mut c = FormatPatchCommand::new();
+    c.rev_spec("HEAD~1..HEAD")
+        .output_dir("/tmp/p")
+        .numbered()
+        .signoff();
+    assert_eq!(
+        args_of(&c),
+        vec![
+            "format-patch",
+            "-n",
+            "--signoff",
+            "-o",
+            "/tmp/p",
+            "HEAD~1..HEAD"
+        ]
+    );
+}
