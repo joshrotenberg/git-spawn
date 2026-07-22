@@ -836,3 +836,100 @@ async fn changes_index_and_worktree_edit_lands_in_both() {
     assert_eq!(changes.unstaged, vec!["README"]);
     assert!(changes.untracked.is_empty());
 }
+
+// ---------- search ----------
+
+use git_spawn::search::Hit;
+
+/// Two tracked files with a shared `TODO` marker plus an unrelated line.
+async fn make_searchable_tree(repo: &Repository) {
+    make_initial_commit(repo).await;
+    std::fs::create_dir(repo.path().join("src")).unwrap();
+    std::fs::write(
+        repo.path().join("src/a.rs"),
+        "fn a() {}\n// TODO: finish a\n",
+    )
+    .unwrap();
+    std::fs::write(
+        repo.path().join("src/b.rs"),
+        "// todo: lowercase\nlet x = 1;\n",
+    )
+    .unwrap();
+    repo.add().path("src").execute().await.unwrap();
+    repo.commit()
+        .message("add sources")
+        .execute()
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn search_finds_matching_line_with_number() {
+    let (_tmp, repo) = make_repo().await;
+    make_searchable_tree(&repo).await;
+
+    let hits = repo.search().pattern("TODO").execute().await.unwrap();
+    assert_eq!(
+        hits,
+        vec![Hit {
+            path: "src/a.rs".into(),
+            line: 2,
+            text: "// TODO: finish a".into(),
+        }]
+    );
+}
+
+#[tokio::test]
+async fn search_no_match_is_empty_not_error() {
+    let (_tmp, repo) = make_repo().await;
+    make_searchable_tree(&repo).await;
+
+    let hits = repo
+        .search()
+        .pattern("NOPE_NO_MATCH")
+        .execute()
+        .await
+        .unwrap();
+    assert!(hits.is_empty());
+}
+
+#[tokio::test]
+async fn search_case_insensitive_matches_both() {
+    let (_tmp, repo) = make_repo().await;
+    make_searchable_tree(&repo).await;
+
+    let hits = repo
+        .search()
+        .pattern("todo")
+        .case_insensitive()
+        .execute()
+        .await
+        .unwrap();
+    let paths: Vec<&str> = hits.iter().map(|h| h.path.as_str()).collect();
+    assert_eq!(paths, vec!["src/a.rs", "src/b.rs"]);
+}
+
+#[tokio::test]
+async fn search_in_paths_restricts_scope() {
+    let (_tmp, repo) = make_repo().await;
+    make_searchable_tree(&repo).await;
+
+    let hits = repo
+        .search()
+        .pattern("todo")
+        .case_insensitive()
+        .in_paths(["src/b.rs"])
+        .execute()
+        .await
+        .unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].path, "src/b.rs");
+}
+
+#[tokio::test]
+async fn search_without_pattern_errors() {
+    let (_tmp, repo) = make_repo().await;
+    make_searchable_tree(&repo).await;
+
+    assert!(repo.search().execute().await.is_err());
+}
