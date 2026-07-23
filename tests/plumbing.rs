@@ -3,8 +3,8 @@
 use git_spawn::{
     AmCommand, ApplyCommand, CatFileCommand, CherryCommand, DescribeCommand, Error,
     ForEachRefCommand, FormatPatchCommand, GitCommand, HashObjectCommand, LogCommand,
-    LsFilesCommand, LsTreeCommand, Repository, RevParseCommand, ShowRefCommand, SymbolicRefCommand,
-    UpdateRefCommand, VerifyCommitCommand, VerifyTagCommand,
+    LsFilesCommand, LsTreeCommand, Repository, RevParseCommand, RevertCommand, ShowRefCommand,
+    SymbolicRefCommand, UpdateRefCommand, VerifyCommitCommand, VerifyTagCommand,
 };
 
 use git_spawn::command::reset::ResetMode;
@@ -673,4 +673,103 @@ mod cherry_parser {
         assert_eq!(entries.len(), 1, "unexpected entries: {entries:?}");
         assert_eq!(entries[0].status, CherryStatus::Upstream);
     }
+}
+
+#[tokio::test]
+async fn revert_records_a_reversing_commit() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    commit_file(&repo, "feature.txt", "feature\n", "add feature").await;
+    assert!(repo.path().join("feature.txt").exists());
+
+    let mut cmd = RevertCommand::new();
+    cmd.current_dir(repo.path()).commit("HEAD").no_edit();
+    cmd.execute().await.unwrap();
+
+    assert!(
+        !repo.path().join("feature.txt").exists(),
+        "revert did not undo the commit"
+    );
+
+    let mut log = LogCommand::new();
+    log.current_dir(repo.path()).max_count(1).format("%s");
+    let subject = log.execute().await.unwrap().stdout_str().to_string();
+    assert!(
+        subject.contains(r#"Revert "add feature""#),
+        "unexpected subject: {subject}"
+    );
+}
+
+#[tokio::test]
+async fn revert_no_commit_leaves_head_alone() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    commit_file(&repo, "feature.txt", "feature\n", "add feature").await;
+
+    let mut head = RevParseCommand::new();
+    head.current_dir(repo.path()).arg_str("HEAD");
+    let before = head.execute().await.unwrap();
+
+    let mut cmd = RevertCommand::new();
+    cmd.current_dir(repo.path()).commit("HEAD").no_commit();
+    cmd.execute().await.unwrap();
+
+    let after = head.execute().await.unwrap();
+    assert_eq!(before, after, "--no-commit moved HEAD");
+    assert!(
+        !repo.path().join("feature.txt").exists(),
+        "--no-commit did not apply the reversal to the working tree"
+    );
+}
+
+#[tokio::test]
+async fn revert_of_a_merge_needs_a_mainline() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    repo.checkout().create("feature").execute().await.unwrap();
+    commit_file(&repo, "feature.txt", "feature\n", "add feature").await;
+    repo.checkout().target("main").execute().await.unwrap();
+    commit_file(&repo, "other.txt", "other\n", "add other").await;
+    repo.merge()
+        .commit_ref("feature")
+        .no_ff()
+        .message("merge feature")
+        .execute()
+        .await
+        .unwrap();
+
+    // git refuses a merge revert without --mainline.
+    let mut cmd = RevertCommand::new();
+    cmd.current_dir(repo.path()).commit("HEAD").no_edit();
+    assert!(cmd.execute().await.is_err());
+
+    let mut cmd = RevertCommand::new();
+    cmd.current_dir(repo.path())
+        .commit("HEAD")
+        .mainline(1)
+        .no_edit();
+    cmd.execute().await.unwrap();
+    assert!(
+        !repo.path().join("feature.txt").exists(),
+        "reverting the merge kept the merged-in file"
+    );
+}
+
+#[tokio::test]
+async fn revert_without_a_commit_is_rejected() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let mut cmd = RevertCommand::new();
+    cmd.current_dir(repo.path()).no_edit();
+    assert!(matches!(
+        cmd.execute().await,
+        Err(Error::InvalidConfig { .. })
+    ));
+}
+
+#[tokio::test]
+async fn revert_rejects_two_session_actions() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let mut cmd = RevertCommand::new();
+    cmd.current_dir(repo.path()).abort().skip();
+    assert!(matches!(
+        cmd.execute().await,
+        Err(Error::InvalidConfig { .. })
+    ));
 }
