@@ -180,10 +180,11 @@ pub use command::{
     ls_tree::LsTreeCommand, merge::MergeCommand, mv::MvCommand, notes::NotesCommand,
     pull::PullCommand, push::PushCommand, rebase::RebaseCommand, reflog::ReflogCommand,
     remote::RemoteCommand, reset::ResetCommand, restore::RestoreCommand,
-    rev_parse::RevParseCommand, rm::RmCommand, show::ShowCommand, show_ref::ShowRefCommand,
-    stash::StashCommand, status::StatusCommand, submodule::SubmoduleCommand, switch::SwitchCommand,
-    symbolic_ref::SymbolicRefCommand, tag::TagCommand, update_ref::UpdateRefCommand,
-    verify_commit::VerifyCommitCommand, verify_tag::VerifyTagCommand, worktree::WorktreeCommand,
+    rev_parse::RevParseCommand, rm::RmCommand, shortlog::ShortlogCommand, show::ShowCommand,
+    show_ref::ShowRefCommand, stash::StashCommand, status::StatusCommand,
+    submodule::SubmoduleCommand, switch::SwitchCommand, symbolic_ref::SymbolicRefCommand,
+    tag::TagCommand, update_ref::UpdateRefCommand, verify_commit::VerifyCommitCommand,
+    verify_tag::VerifyTagCommand, worktree::WorktreeCommand,
 };
 pub use error::{Error, Result};
 pub use repo::Repository;
