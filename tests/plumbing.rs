@@ -2,10 +2,11 @@
 
 use git_spawn::{
     AmCommand, ApplyCommand, BlameCommand, CatFileCommand, CherryCommand, CleanCommand,
-    DescribeCommand, Error, ForEachRefCommand, FormatPatchCommand, GitCommand, HashObjectCommand,
-    InterpretTrailersCommand, LogCommand, LsFilesCommand, LsTreeCommand, MergeBaseCommand,
-    RangeDiffCommand, Repository, RevParseCommand, RevertCommand, ShortlogCommand, ShowRefCommand,
-    SymbolicRefCommand, UpdateRefCommand, VerifyCommitCommand, VerifyTagCommand,
+    DescribeCommand, Error, ForEachRefCommand, FormatPatchCommand, GcCommand, GitCommand,
+    HashObjectCommand, InterpretTrailersCommand, LogCommand, LsFilesCommand, LsTreeCommand,
+    MergeBaseCommand, RangeDiffCommand, Repository, RevParseCommand, RevertCommand,
+    ShortlogCommand, ShowRefCommand, SymbolicRefCommand, UpdateRefCommand, VerifyCommitCommand,
+    VerifyTagCommand,
 };
 
 use git_spawn::command::interpret_trailers::TrailerIfExists;
@@ -1513,4 +1514,49 @@ mod shortlog_parser {
         assert_eq!(entries[0].author, "Test");
         assert_eq!(entries[0].count, 3);
     }
+}
+
+#[tokio::test]
+async fn gc_packs_loose_objects() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let mut cmd = GcCommand::new();
+    cmd.current_dir(repo.path());
+    cmd.execute().await.unwrap();
+
+    // gc repacks reachable objects, so a pack file must now exist.
+    let pack_dir = repo.path().join(".git/objects/pack");
+    let has_pack = std::fs::read_dir(&pack_dir)
+        .unwrap()
+        .filter_map(Result::ok)
+        .any(|e| e.file_name().to_string_lossy().ends_with(".pack"));
+    assert!(
+        has_pack,
+        "expected a pack file under {}",
+        pack_dir.display()
+    );
+}
+
+#[tokio::test]
+async fn gc_prune_now_drops_an_unreachable_object() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+
+    // Write a loose blob that nothing references.
+    let blob = repo.path().join("dangling.txt");
+    std::fs::write(&blob, "dangling\n").unwrap();
+    let mut h = HashObjectCommand::new();
+    h.current_dir(repo.path()).write().path(&blob);
+    let sha = h.execute().await.unwrap();
+
+    let obj = repo
+        .path()
+        .join(".git/objects")
+        .join(&sha[..2])
+        .join(&sha[2..]);
+    assert!(obj.exists(), "loose object should exist before prune");
+
+    let mut cmd = GcCommand::new();
+    cmd.current_dir(repo.path()).prune("now");
+    cmd.execute().await.unwrap();
+
+    assert!(!obj.exists(), "unreachable object should be pruned");
 }
