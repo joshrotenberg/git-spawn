@@ -593,3 +593,37 @@ fn cherry_defaults_to_the_configured_upstream() {
     let c = CherryCommand::new();
     assert_eq!(args_of(&c), vec!["cherry"]);
 }
+
+#[test]
+fn revert_single_commit_no_edit() {
+    let mut c = RevertCommand::new();
+    c.commit("HEAD").no_edit();
+    assert_eq!(args_of(&c), vec!["revert", "--no-edit", "HEAD"]);
+}
+
+#[test]
+fn revert_merge_without_committing() {
+    let mut c = RevertCommand::new();
+    c.commit("abc1234").no_commit().mainline(1);
+    assert_eq!(
+        args_of(&c),
+        vec!["revert", "--no-commit", "--mainline", "1", "abc1234"]
+    );
+}
+
+#[test]
+fn revert_multiple_commits_keep_their_order() {
+    let mut c = RevertCommand::new();
+    c.commit("aaa1111").commit("bbb2222").no_edit();
+    assert_eq!(
+        args_of(&c),
+        vec!["revert", "--no-edit", "aaa1111", "bbb2222"]
+    );
+}
+
+#[test]
+fn revert_session_action_drops_the_other_arguments() {
+    let mut c = RevertCommand::new();
+    c.commit("HEAD").no_commit().abort();
+    assert_eq!(args_of(&c), vec!["revert", "--abort"]);
+}

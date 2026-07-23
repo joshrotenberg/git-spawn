@@ -96,6 +96,7 @@ pub mod remote;
 pub mod reset;
 pub mod restore;
 pub mod rev_parse;
+pub mod revert;
 pub mod rm;
 pub mod show;
 pub mod show_ref;
