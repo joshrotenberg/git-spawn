@@ -91,6 +91,7 @@ pub mod mv;
 pub mod notes;
 pub mod pull;
 pub mod push;
+pub mod range_diff;
 pub mod rebase;
 pub mod reflog;
 pub mod remote;
