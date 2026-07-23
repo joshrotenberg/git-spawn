@@ -647,3 +647,34 @@ fn blame_show_email_keeps_the_human_format() {
     c.file("src/lib.rs").show_email();
     assert_eq!(args_of(&c), vec!["blame", "-e", "--", "src/lib.rs"]);
 }
+
+#[test]
+fn shortlog_plain_range() {
+    let mut c = ShortlogCommand::new();
+    c.rev("v1.0..HEAD");
+    assert_eq!(args_of(&c), vec!["shortlog", "v1.0..HEAD"]);
+}
+
+#[test]
+fn shortlog_summary_numbered_with_emails() {
+    let mut c = ShortlogCommand::new();
+    c.rev("HEAD").summary().numbered().email();
+    assert_eq!(args_of(&c), vec!["shortlog", "-s", "-n", "-e", "HEAD"]);
+}
+
+#[test]
+fn shortlog_committer_grouping_with_a_wrap_width() {
+    let mut c = ShortlogCommand::new();
+    c.rev("HEAD").committer().wrap(0);
+    assert_eq!(args_of(&c), vec!["shortlog", "-c", "-w0", "HEAD"]);
+}
+
+#[test]
+fn shortlog_paths_follow_the_separator() {
+    let mut c = ShortlogCommand::new();
+    c.rev("main").rev("topic").paths(["src", "tests"]);
+    assert_eq!(
+        args_of(&c),
+        vec!["shortlog", "main", "topic", "--", "src", "tests"]
+    );
+}

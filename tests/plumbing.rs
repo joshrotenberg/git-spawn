@@ -3,8 +3,8 @@
 use git_spawn::{
     AmCommand, ApplyCommand, BlameCommand, CatFileCommand, CherryCommand, DescribeCommand, Error,
     ForEachRefCommand, FormatPatchCommand, GitCommand, HashObjectCommand, LogCommand,
-    LsFilesCommand, LsTreeCommand, Repository, RevParseCommand, ShowRefCommand, SymbolicRefCommand,
-    UpdateRefCommand, VerifyCommitCommand, VerifyTagCommand,
+    LsFilesCommand, LsTreeCommand, Repository, RevParseCommand, ShortlogCommand, ShowRefCommand,
+    SymbolicRefCommand, UpdateRefCommand, VerifyCommitCommand, VerifyTagCommand,
 };
 
 use git_spawn::command::reset::ResetMode;
@@ -828,5 +828,152 @@ mod blame_parser {
         assert_eq!(entries[0].content.as_deref(), Some("two"));
         assert_eq!(entries[1].final_line, 3);
         assert_eq!(entries[1].content.as_deref(), Some("three"));
+    }
+}
+
+async fn make_repo_with_two_authors() -> (tempfile::TempDir, Repository) {
+    let (tmp, repo) = common::init_repo().await;
+    commit_file(&repo, "one.txt", "one\n", "add one").await;
+    commit_file(&repo, "two.txt", "two\n", "add two").await;
+
+    // A third commit from a different author, so the report has two groups.
+    std::fs::write(repo.path().join("three.txt"), "three\n").unwrap();
+    repo.add().path("three.txt").execute().await.unwrap();
+    repo.commit()
+        .message("add three")
+        .author("Other Dev <other@example.com>")
+        .execute()
+        .await
+        .unwrap();
+    (tmp, repo)
+}
+
+#[tokio::test]
+async fn shortlog_groups_commits_by_author() {
+    let (_tmp, repo) = make_repo_with_two_authors().await;
+    let mut cmd = ShortlogCommand::new();
+    cmd.current_dir(repo.path()).rev("HEAD");
+
+    let out = cmd.execute().await.unwrap();
+    let stdout = out.stdout_str();
+    assert!(stdout.contains("Test (2):"), "unexpected report: {stdout}");
+    assert!(
+        stdout.contains("Other Dev (1):"),
+        "unexpected report: {stdout}"
+    );
+    assert!(stdout.contains("add one"), "unexpected report: {stdout}");
+}
+
+#[tokio::test]
+async fn shortlog_summary_drops_the_subjects() {
+    let (_tmp, repo) = make_repo_with_two_authors().await;
+    let mut cmd = ShortlogCommand::new();
+    cmd.current_dir(repo.path())
+        .rev("HEAD")
+        .summary()
+        .numbered();
+
+    let out = cmd.execute().await.unwrap();
+    let stdout = out.stdout_str();
+    assert!(stdout.contains("Test"), "unexpected report: {stdout}");
+    assert!(
+        !stdout.contains("add one"),
+        "subjects survived --summary: {stdout}"
+    );
+    // --numbered puts the two-commit author first.
+    let first = stdout.lines().next().unwrap_or_default();
+    assert!(first.contains("Test"), "unexpected first line: {stdout}");
+}
+
+#[tokio::test]
+async fn shortlog_pathspecs_limit_the_report() {
+    let (_tmp, repo) = make_repo_with_two_authors().await;
+    let mut cmd = ShortlogCommand::new();
+    cmd.current_dir(repo.path()).rev("HEAD").path("three.txt");
+
+    let out = cmd.execute().await.unwrap();
+    let stdout = out.stdout_str();
+    assert!(stdout.contains("add three"), "unexpected report: {stdout}");
+    assert!(
+        !stdout.contains("add one"),
+        "the pathspec did not limit the report: {stdout}"
+    );
+}
+
+#[tokio::test]
+async fn shortlog_without_a_revision_is_rejected() {
+    let (_tmp, repo) = make_repo_with_two_authors().await;
+    let mut cmd = ShortlogCommand::new();
+    cmd.current_dir(repo.path());
+    assert!(matches!(
+        cmd.execute().await,
+        Err(Error::InvalidConfig { .. })
+    ));
+}
+
+#[cfg(feature = "parse")]
+mod shortlog_parser {
+    use super::*;
+
+    #[tokio::test]
+    async fn entries_carry_each_author_and_their_subjects() {
+        let (_tmp, repo) = make_repo_with_two_authors().await;
+        let mut cmd = ShortlogCommand::new();
+        cmd.current_dir(repo.path()).rev("HEAD").numbered();
+
+        let out = cmd.execute().await.unwrap();
+        let entries = cmd.parse_entries(&out);
+        assert_eq!(entries.len(), 2, "unexpected entries: {entries:?}");
+
+        assert_eq!(entries[0].author, "Test");
+        assert_eq!(entries[0].email, None);
+        assert_eq!(entries[0].count, 2);
+        assert_eq!(entries[0].subjects, ["add one", "add two"]);
+
+        assert_eq!(entries[1].author, "Other Dev");
+        assert_eq!(entries[1].count, 1);
+        assert_eq!(entries[1].subjects, ["add three"]);
+    }
+
+    #[tokio::test]
+    async fn summary_entries_carry_counts_and_emails_without_subjects() {
+        let (_tmp, repo) = make_repo_with_two_authors().await;
+        let mut cmd = ShortlogCommand::new();
+        cmd.current_dir(repo.path())
+            .rev("HEAD")
+            .summary()
+            .numbered()
+            .email();
+
+        let out = cmd.execute().await.unwrap();
+        let entries = cmd.parse_entries(&out);
+        assert_eq!(entries.len(), 2, "unexpected entries: {entries:?}");
+
+        assert_eq!(entries[0].author, "Test");
+        assert_eq!(entries[0].email.as_deref(), Some("test@example.com"));
+        assert_eq!(entries[0].count, 2);
+        assert!(entries[0].subjects.is_empty());
+
+        assert_eq!(entries[1].author, "Other Dev");
+        assert_eq!(entries[1].email.as_deref(), Some("other@example.com"));
+        assert_eq!(entries[1].count, 1);
+    }
+
+    #[tokio::test]
+    async fn grouping_by_committer_credits_the_committing_identity() {
+        let (_tmp, repo) = make_repo_with_two_authors().await;
+        let mut cmd = ShortlogCommand::new();
+        cmd.current_dir(repo.path())
+            .rev("HEAD")
+            .summary()
+            .committer();
+
+        let out = cmd.execute().await.unwrap();
+        let entries = cmd.parse_entries(&out);
+        // All three commits were made by the configured identity, whatever the
+        // --author override said.
+        assert_eq!(entries.len(), 1, "unexpected entries: {entries:?}");
+        assert_eq!(entries[0].author, "Test");
+        assert_eq!(entries[0].count, 3);
     }
 }
