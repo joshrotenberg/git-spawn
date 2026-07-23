@@ -593,3 +593,57 @@ fn cherry_defaults_to_the_configured_upstream() {
     let c = CherryCommand::new();
     assert_eq!(args_of(&c), vec!["cherry"]);
 }
+
+#[test]
+fn blame_plain_file() {
+    let mut c = BlameCommand::new();
+    c.file("src/lib.rs");
+    assert_eq!(args_of(&c), vec!["blame", "--", "src/lib.rs"]);
+}
+
+#[test]
+fn blame_porcelain_with_line_range_and_rev() {
+    let mut c = BlameCommand::new();
+    c.file("src/lib.rs").rev("HEAD~3").lines(10, 20).porcelain();
+    assert_eq!(
+        args_of(&c),
+        vec![
+            "blame",
+            "--porcelain",
+            "-L",
+            "10,20",
+            "HEAD~3",
+            "--",
+            "src/lib.rs"
+        ]
+    );
+}
+
+#[test]
+fn blame_line_porcelain_with_detection_options() {
+    let mut c = BlameCommand::new();
+    c.file("src/lib.rs")
+        .line_porcelain()
+        .ignore_whitespace()
+        .detect_moved()
+        .detect_copied();
+    assert_eq!(
+        args_of(&c),
+        vec![
+            "blame",
+            "--line-porcelain",
+            "-w",
+            "-M",
+            "-C",
+            "--",
+            "src/lib.rs"
+        ]
+    );
+}
+
+#[test]
+fn blame_show_email_keeps_the_human_format() {
+    let mut c = BlameCommand::new();
+    c.file("src/lib.rs").show_email();
+    assert_eq!(args_of(&c), vec!["blame", "-e", "--", "src/lib.rs"]);
+}

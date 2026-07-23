@@ -1,7 +1,7 @@
 //! Integration tests for plumbing commands and typed parsers.
 
 use git_spawn::{
-    AmCommand, ApplyCommand, CatFileCommand, CherryCommand, DescribeCommand, Error,
+    AmCommand, ApplyCommand, BlameCommand, CatFileCommand, CherryCommand, DescribeCommand, Error,
     ForEachRefCommand, FormatPatchCommand, GitCommand, HashObjectCommand, LogCommand,
     LsFilesCommand, LsTreeCommand, Repository, RevParseCommand, ShowRefCommand, SymbolicRefCommand,
     UpdateRefCommand, VerifyCommitCommand, VerifyTagCommand,
@@ -672,5 +672,161 @@ mod cherry_parser {
         let entries = cmd.parse_entries(&cmd.execute().await.unwrap());
         assert_eq!(entries.len(), 1, "unexpected entries: {entries:?}");
         assert_eq!(entries[0].status, CherryStatus::Upstream);
+    }
+}
+
+async fn make_repo_with_two_line_history() -> (tempfile::TempDir, Repository) {
+    let (tmp, repo) = common::init_repo().await;
+    commit_file(&repo, "notes.txt", "one\ntwo\n", "add one and two").await;
+    commit_file(&repo, "notes.txt", "one\ntwo\nthree\n", "add three").await;
+    (tmp, repo)
+}
+
+#[tokio::test]
+async fn blame_reports_the_author_of_each_line() {
+    let (_tmp, repo) = make_repo_with_two_line_history().await;
+    let mut cmd = BlameCommand::new();
+    cmd.current_dir(repo.path()).file("notes.txt");
+
+    let out = cmd.execute().await.unwrap();
+    let stdout = out.stdout_str();
+    assert!(stdout.contains("Test"), "no author in the report: {stdout}");
+    for line in ["one", "two", "three"] {
+        assert!(
+            stdout.contains(line),
+            "line {line} missing from the report: {stdout}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn blame_line_range_limits_the_report() {
+    let (_tmp, repo) = make_repo_with_two_line_history().await;
+    let mut cmd = BlameCommand::new();
+    cmd.current_dir(repo.path()).file("notes.txt").lines(3, 3);
+
+    let out = cmd.execute().await.unwrap();
+    let stdout = out.stdout_str();
+    assert!(
+        stdout.contains("three"),
+        "the requested line is missing: {stdout}"
+    );
+    assert!(
+        !stdout.contains("one"),
+        "the range did not limit the report: {stdout}"
+    );
+}
+
+#[tokio::test]
+async fn blame_without_a_file_is_rejected() {
+    let (_tmp, repo) = make_repo_with_two_line_history().await;
+    let mut cmd = BlameCommand::new();
+    cmd.current_dir(repo.path());
+    assert!(matches!(
+        cmd.execute().await,
+        Err(Error::InvalidConfig { .. })
+    ));
+}
+
+#[tokio::test]
+async fn blame_rejects_an_inverted_line_range() {
+    let (_tmp, repo) = make_repo_with_two_line_history().await;
+    let mut cmd = BlameCommand::new();
+    cmd.current_dir(repo.path()).file("notes.txt").lines(3, 1);
+    assert!(matches!(
+        cmd.execute().await,
+        Err(Error::InvalidConfig { .. })
+    ));
+}
+
+#[tokio::test]
+async fn blame_rejects_a_zero_start_line() {
+    let (_tmp, repo) = make_repo_with_two_line_history().await;
+    let mut cmd = BlameCommand::new();
+    cmd.current_dir(repo.path()).file("notes.txt").lines(0, 2);
+    assert!(matches!(
+        cmd.execute().await,
+        Err(Error::InvalidConfig { .. })
+    ));
+}
+
+#[cfg(feature = "parse")]
+mod blame_parser {
+    use super::*;
+
+    #[tokio::test]
+    async fn porcelain_entries_group_lines_by_commit() {
+        let (_tmp, repo) = make_repo_with_two_line_history().await;
+        let mut cmd = BlameCommand::new();
+        cmd.current_dir(repo.path()).file("notes.txt").porcelain();
+
+        let entries = cmd.parse_entries(&cmd.execute().await.unwrap());
+        assert_eq!(entries.len(), 3, "unexpected entries: {entries:?}");
+
+        assert_eq!(entries[0].final_line, 1);
+        assert_eq!(entries[0].original_line, 1);
+        assert_eq!(entries[0].content.as_deref(), Some("one"));
+        assert_eq!(entries[0].author.as_deref(), Some("Test"));
+        assert_eq!(entries[0].author_mail.as_deref(), Some("test@example.com"));
+        assert_eq!(entries[0].summary.as_deref(), Some("add one and two"));
+        assert_eq!(entries[0].filename.as_deref(), Some("notes.txt"));
+        assert!(entries[0].author_time.is_some());
+
+        // Lines 1 and 2 come from one commit, so the porcelain format writes
+        // the group count and the author only on the first of them.
+        assert_eq!(entries[1].final_line, 2);
+        assert_eq!(entries[1].content.as_deref(), Some("two"));
+        assert_eq!(entries[1].sha, entries[0].sha);
+        assert_eq!(entries[1].line_count, None);
+        assert_eq!(entries[1].author.as_deref(), Some("Test"));
+        assert_eq!(entries[1].summary.as_deref(), Some("add one and two"));
+
+        assert_eq!(entries[2].final_line, 3);
+        assert_eq!(entries[2].original_line, 3);
+        assert_eq!(entries[2].content.as_deref(), Some("three"));
+        assert_ne!(entries[2].sha, entries[0].sha);
+        assert_eq!(entries[2].summary.as_deref(), Some("add three"));
+
+        // The root commit has no parent to keep walking into, so git marks it
+        // as a boundary. Line 2 inherits the flag with the rest of its
+        // commit's metadata; the later commit is not a boundary.
+        assert!(entries[0].boundary);
+        assert!(entries[1].boundary);
+        assert!(!entries[2].boundary);
+    }
+
+    #[tokio::test]
+    async fn line_porcelain_repeats_the_metadata_on_every_line() {
+        let (_tmp, repo) = make_repo_with_two_line_history().await;
+        let mut cmd = BlameCommand::new();
+        cmd.current_dir(repo.path())
+            .file("notes.txt")
+            .line_porcelain();
+
+        let entries = cmd.parse_entries(&cmd.execute().await.unwrap());
+        assert_eq!(entries.len(), 3, "unexpected entries: {entries:?}");
+        assert!(
+            entries
+                .iter()
+                .all(|e| e.author.as_deref() == Some("Test") && e.summary.is_some()),
+            "metadata missing from an entry: {entries:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_line_range_blames_only_the_requested_lines() {
+        let (_tmp, repo) = make_repo_with_two_line_history().await;
+        let mut cmd = BlameCommand::new();
+        cmd.current_dir(repo.path())
+            .file("notes.txt")
+            .lines(2, 3)
+            .porcelain();
+
+        let entries = cmd.parse_entries(&cmd.execute().await.unwrap());
+        assert_eq!(entries.len(), 2, "unexpected entries: {entries:?}");
+        assert_eq!(entries[0].final_line, 2);
+        assert_eq!(entries[0].content.as_deref(), Some("two"));
+        assert_eq!(entries[1].final_line, 3);
+        assert_eq!(entries[1].content.as_deref(), Some("three"));
     }
 }

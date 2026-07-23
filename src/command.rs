@@ -66,6 +66,7 @@ pub mod add;
 pub mod am;
 pub mod apply;
 pub mod bisect;
+pub mod blame;
 pub mod branch;
 pub mod cat_file;
 pub mod checkout;
