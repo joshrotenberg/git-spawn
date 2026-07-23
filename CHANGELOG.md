@@ -4,6 +4,50 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [0.3.0](https://github.com/joshrotenberg/git-spawn/compare/v0.2.1...v0.3.0) - 2026-07-23
+
+
+### Bug Fixes
+
+- Kill the process group on timeout ([#89](https://github.com/joshrotenberg/git-spawn/pull/89))
+- Emit -- separator before pathspecs in ls-tree and hash-object ([#58](https://github.com/joshrotenberg/git-spawn/pull/58))
+
+### Features
+
+- Add blame raw command ([#101](https://github.com/joshrotenberg/git-spawn/pull/101))
+- Add cherry raw command ([#96](https://github.com/joshrotenberg/git-spawn/pull/96))
+- Add verify-commit and verify-tag raw commands ([#95](https://github.com/joshrotenberg/git-spawn/pull/95))
+- Add patches helper ([#94](https://github.com/joshrotenberg/git-spawn/pull/94))
+- Add AmCommand raw command ([#93](https://github.com/joshrotenberg/git-spawn/pull/93))
+- Add ApplyCommand raw command ([#92](https://github.com/joshrotenberg/git-spawn/pull/92))
+- Add FormatPatchCommand raw command ([#91](https://github.com/joshrotenberg/git-spawn/pull/91))
+- Add cat_file, hash_object, for_each_ref, update_ref accessors ([#90](https://github.com/joshrotenberg/git-spawn/pull/90))
+- Add typed hooks helper ([#80](https://github.com/joshrotenberg/git-spawn/pull/80))
+- Add typed search helper ([#79](https://github.com/joshrotenberg/git-spawn/pull/79))
+- Add changes helper ([#77](https://github.com/joshrotenberg/git-spawn/pull/77))
+- Add typed signing helper ([#75](https://github.com/joshrotenberg/git-spawn/pull/75))
+- Add typed remotes helper ([#74](https://github.com/joshrotenberg/git-spawn/pull/74))
+- Add typed conflicts helper ([#73](https://github.com/joshrotenberg/git-spawn/pull/73))
+- Add typed stashes helper ([#72](https://github.com/joshrotenberg/git-spawn/pull/72))
+- Add typed BisectResult output for git bisect ([#67](https://github.com/joshrotenberg/git-spawn/pull/67))
+- Add branch/ahead/behind metadata to typed status output (WIP) ([#70](https://github.com/joshrotenberg/git-spawn/pull/70))
+- Add stat/numstat/raw diff parsers and a typed Diff aggregate (WIP) ([#71](https://github.com/joshrotenberg/git-spawn/pull/71))
+- Add typed SubmoduleStatus output for submodule command (WIP) ([#69](https://github.com/joshrotenberg/git-spawn/pull/69))
+- Add typed RebaseResult output for git rebase ([#66](https://github.com/joshrotenberg/git-spawn/pull/66))
+- Add typed ShowResult output for show ([#68](https://github.com/joshrotenberg/git-spawn/pull/68))
+- Add typed CherryPickResult output for cherry-pick ([#65](https://github.com/joshrotenberg/git-spawn/pull/65))
+- Add typed TreeEntry output for ls-tree ([#64](https://github.com/joshrotenberg/git-spawn/pull/64))
+- Add typed ReflogEntry output for reflog show ([#63](https://github.com/joshrotenberg/git-spawn/pull/63))
+- Add typed CommitResult output for commit ([#61](https://github.com/joshrotenberg/git-spawn/pull/61))
+- Add typed MergeResult output for git merge ([#62](https://github.com/joshrotenberg/git-spawn/pull/62))
+- Add typed PullResult output for git pull ([#60](https://github.com/joshrotenberg/git-spawn/pull/60))
+
+### Miscellaneous
+
+- Bump amannn/action-semantic-pull-request from 5 to 6 ([#82](https://github.com/joshrotenberg/git-spawn/pull/82))
+- Bump actions/checkout from 5 to 7 ([#81](https://github.com/joshrotenberg/git-spawn/pull/81))
+- Add Dependabot config for cargo and github-actions ([#78](https://github.com/joshrotenberg/git-spawn/pull/78))
+
 ## [0.2.1](https://github.com/joshrotenberg/git-spawn/compare/v0.2.0...v0.2.1) - 2026-06-08
 
 
