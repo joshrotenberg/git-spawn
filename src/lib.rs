@@ -171,19 +171,19 @@ pub mod workflow;
 
 pub use command::{
     CommandExecutor, CommandOutput, GitCommand, add::AddCommand, am::AmCommand,
-    apply::ApplyCommand, bisect::BisectCommand, branch::BranchCommand, cat_file::CatFileCommand,
-    checkout::CheckoutCommand, cherry::CherryCommand, cherry_pick::CherryPickCommand,
-    clone::CloneCommand, commit::CommitCommand, config::ConfigCommand, describe::DescribeCommand,
-    diff::DiffCommand, fetch::FetchCommand, for_each_ref::ForEachRefCommand,
-    format_patch::FormatPatchCommand, grep::GrepCommand, hash_object::HashObjectCommand,
-    init::InitCommand, log::LogCommand, ls_files::LsFilesCommand, ls_tree::LsTreeCommand,
-    merge::MergeCommand, mv::MvCommand, notes::NotesCommand, pull::PullCommand, push::PushCommand,
-    rebase::RebaseCommand, reflog::ReflogCommand, remote::RemoteCommand, reset::ResetCommand,
-    restore::RestoreCommand, rev_parse::RevParseCommand, rm::RmCommand, show::ShowCommand,
-    show_ref::ShowRefCommand, stash::StashCommand, status::StatusCommand,
-    submodule::SubmoduleCommand, switch::SwitchCommand, symbolic_ref::SymbolicRefCommand,
-    tag::TagCommand, update_ref::UpdateRefCommand, verify_commit::VerifyCommitCommand,
-    verify_tag::VerifyTagCommand, worktree::WorktreeCommand,
+    apply::ApplyCommand, bisect::BisectCommand, blame::BlameCommand, branch::BranchCommand,
+    cat_file::CatFileCommand, checkout::CheckoutCommand, cherry::CherryCommand,
+    cherry_pick::CherryPickCommand, clone::CloneCommand, commit::CommitCommand,
+    config::ConfigCommand, describe::DescribeCommand, diff::DiffCommand, fetch::FetchCommand,
+    for_each_ref::ForEachRefCommand, format_patch::FormatPatchCommand, grep::GrepCommand,
+    hash_object::HashObjectCommand, init::InitCommand, log::LogCommand, ls_files::LsFilesCommand,
+    ls_tree::LsTreeCommand, merge::MergeCommand, mv::MvCommand, notes::NotesCommand,
+    pull::PullCommand, push::PushCommand, rebase::RebaseCommand, reflog::ReflogCommand,
+    remote::RemoteCommand, reset::ResetCommand, restore::RestoreCommand,
+    rev_parse::RevParseCommand, rm::RmCommand, show::ShowCommand, show_ref::ShowRefCommand,
+    stash::StashCommand, status::StatusCommand, submodule::SubmoduleCommand, switch::SwitchCommand,
+    symbolic_ref::SymbolicRefCommand, tag::TagCommand, update_ref::UpdateRefCommand,
+    verify_commit::VerifyCommitCommand, verify_tag::VerifyTagCommand, worktree::WorktreeCommand,
 };
 pub use error::{Error, Result};
 pub use repo::Repository;
