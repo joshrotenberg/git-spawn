@@ -3,6 +3,7 @@
 
 use git_spawn::command::{
     interpret_trailers::{TrailerIfExists, TrailerIfMissing, TrailerWhere},
+    maintenance::{MaintenanceSchedule, MaintenanceTask},
     reset::ResetMode,
     stash::{StashAction, StashCommand},
     status::StatusFormat,
@@ -752,6 +753,32 @@ fn interpret_trailers_single_trailer() {
 }
 
 #[test]
+fn maintenance_run_bare() {
+    let c = MaintenanceCommand::run();
+    assert_eq!(args_of(&c), vec!["maintenance", "run"]);
+}
+
+#[test]
+fn maintenance_run_quiet_with_repeated_tasks() {
+    let mut c = MaintenanceCommand::run();
+    c.quiet()
+        .task(MaintenanceTask::CommitGraph)
+        .task(MaintenanceTask::IncrementalRepack)
+        .task_raw("bespoke-task");
+    assert_eq!(
+        args_of(&c),
+        vec![
+            "maintenance",
+            "run",
+            "--quiet",
+            "--task=commit-graph",
+            "--task=incremental-repack",
+            "--task=bespoke-task",
+        ]
+    );
+}
+
+#[test]
 fn interpret_trailers_placement_and_conflict_actions() {
     let mut c = InterpretTrailersCommand::new();
     c.in_place()
@@ -947,4 +974,43 @@ fn fsck_dangling_after_no_dangling_wins() {
     let mut c = FsckCommand::new();
     c.no_dangling().dangling();
     assert_eq!(args_of(&c), vec!["fsck", "--dangling"]);
+}
+
+#[test]
+fn maintenance_run_schedule_replaces_auto() {
+    // git rejects --auto alongside --schedule, so the two share one field and
+    // the last call wins rather than emitting a pair git will refuse.
+    let mut c = MaintenanceCommand::run();
+    c.auto().schedule(MaintenanceSchedule::Weekly);
+    assert_eq!(args_of(&c), vec!["maintenance", "run", "--schedule=weekly"]);
+
+    let mut c = MaintenanceCommand::run();
+    c.schedule(MaintenanceSchedule::Hourly).auto();
+    assert_eq!(args_of(&c), vec!["maintenance", "run", "--auto"]);
+}
+
+#[test]
+fn maintenance_register_with_config_file() {
+    let mut c = MaintenanceCommand::register();
+    c.config_file("/tmp/gitconfig");
+    assert_eq!(
+        args_of(&c),
+        vec!["maintenance", "register", "--config-file", "/tmp/gitconfig"]
+    );
+}
+
+#[test]
+fn maintenance_unregister_forced() {
+    let mut c = MaintenanceCommand::unregister();
+    c.force().config_file("/tmp/gitconfig");
+    assert_eq!(
+        args_of(&c),
+        vec![
+            "maintenance",
+            "unregister",
+            "--force",
+            "--config-file",
+            "/tmp/gitconfig",
+        ]
+    );
 }

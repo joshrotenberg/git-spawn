@@ -90,6 +90,7 @@ pub mod interpret_trailers;
 pub mod log;
 pub mod ls_files;
 pub mod ls_tree;
+pub mod maintenance;
 pub mod merge;
 pub mod merge_base;
 pub mod mv;
