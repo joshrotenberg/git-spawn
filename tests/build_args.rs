@@ -921,3 +921,30 @@ fn gc_no_prune_after_prune_wins() {
     c.prune("2.weeks.ago").no_prune();
     assert_eq!(args_of(&c), vec!["gc", "--no-prune"]);
 }
+
+#[test]
+fn fsck_bare() {
+    let c = FsckCommand::new();
+    assert_eq!(args_of(&c), vec!["fsck"]);
+}
+
+#[test]
+fn fsck_full_with_unreachable() {
+    let mut c = FsckCommand::new();
+    c.full().unreachable();
+    assert_eq!(args_of(&c), vec!["fsck", "--full", "--unreachable"]);
+}
+
+#[test]
+fn fsck_no_dangling() {
+    let mut c = FsckCommand::new();
+    c.no_dangling();
+    assert_eq!(args_of(&c), vec!["fsck", "--no-dangling"]);
+}
+
+#[test]
+fn fsck_dangling_after_no_dangling_wins() {
+    let mut c = FsckCommand::new();
+    c.no_dangling().dangling();
+    assert_eq!(args_of(&c), vec!["fsck", "--dangling"]);
+}

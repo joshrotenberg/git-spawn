@@ -2,9 +2,9 @@
 
 use git_spawn::{
     AmCommand, ApplyCommand, BlameCommand, CatFileCommand, CherryCommand, CleanCommand,
-    DescribeCommand, Error, ForEachRefCommand, FormatPatchCommand, GcCommand, GitCommand,
-    HashObjectCommand, InterpretTrailersCommand, LogCommand, LsFilesCommand, LsTreeCommand,
-    MergeBaseCommand, RangeDiffCommand, Repository, RevParseCommand, RevertCommand,
+    DescribeCommand, Error, ForEachRefCommand, FormatPatchCommand, FsckCommand, GcCommand,
+    GitCommand, HashObjectCommand, InterpretTrailersCommand, LogCommand, LsFilesCommand,
+    LsTreeCommand, MergeBaseCommand, RangeDiffCommand, Repository, RevParseCommand, RevertCommand,
     ShortlogCommand, ShowRefCommand, SymbolicRefCommand, UpdateRefCommand, VerifyCommitCommand,
     VerifyTagCommand,
 };
@@ -1559,4 +1559,69 @@ async fn gc_prune_now_drops_an_unreachable_object() {
     cmd.execute().await.unwrap();
 
     assert!(!obj.exists(), "unreachable object should be pruned");
+}
+
+#[tokio::test]
+async fn fsck_reports_nothing_for_a_clean_repo() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let mut cmd = FsckCommand::new();
+    cmd.current_dir(repo.path());
+    let out = cmd.execute().await.unwrap();
+    assert_eq!(out.stdout_str().trim(), "");
+}
+
+/// Writes a blob that nothing references and returns its SHA.
+async fn write_unreferenced_blob(repo: &Repository) -> String {
+    let blob = repo.path().join("loose.txt");
+    std::fs::write(&blob, "loose\n").unwrap();
+    let mut h = HashObjectCommand::new();
+    h.current_dir(repo.path()).write().path(&blob);
+    h.execute().await.unwrap()
+}
+
+#[tokio::test]
+async fn fsck_reports_a_dangling_object_by_default() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let sha = write_unreferenced_blob(&repo).await;
+
+    let mut cmd = FsckCommand::new();
+    cmd.current_dir(repo.path());
+    let out = cmd.execute().await.unwrap();
+    assert!(
+        out.stdout_str().contains(&format!("dangling blob {sha}")),
+        "unexpected report: {}",
+        out.stdout_str()
+    );
+}
+
+#[tokio::test]
+async fn fsck_no_dangling_suppresses_the_report() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let sha = write_unreferenced_blob(&repo).await;
+
+    let mut cmd = FsckCommand::new();
+    cmd.current_dir(repo.path()).no_dangling();
+    let out = cmd.execute().await.unwrap();
+    assert!(
+        !out.stdout_str().contains(&sha),
+        "unexpected report: {}",
+        out.stdout_str()
+    );
+}
+
+#[tokio::test]
+async fn fsck_full_unreachable_names_the_object() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let sha = write_unreferenced_blob(&repo).await;
+
+    let mut cmd = FsckCommand::new();
+    cmd.current_dir(repo.path()).full().unreachable();
+    let out = cmd.execute().await.unwrap();
+    // --unreachable reports the same object under the unreachable heading.
+    assert!(
+        out.stdout_str()
+            .contains(&format!("unreachable blob {sha}")),
+        "unexpected report: {}",
+        out.stdout_str()
+    );
 }
