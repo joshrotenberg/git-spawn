@@ -5,12 +5,13 @@ use git_spawn::{
     CatFileCommand, CherryCommand, CleanCommand, DescribeCommand, Error, ForEachRefCommand,
     FormatPatchCommand, FsckCommand, GcCommand, GitCommand, HashObjectCommand,
     InterpretTrailersCommand, LogCommand, LsFilesCommand, LsTreeCommand, MaintenanceCommand,
-    MergeBaseCommand, RangeDiffCommand, Repository, RevParseCommand, RevertCommand,
+    MergeBaseCommand, RangeDiffCommand, Repository, RerereCommand, RevParseCommand, RevertCommand,
     ShortlogCommand, ShowRefCommand, SymbolicRefCommand, UpdateRefCommand, VerifyCommitCommand,
     VerifyTagCommand,
 };
 
 use git_spawn::command::archive::ArchiveFormat;
+use git_spawn::command::config::{ConfigCommand, ConfigScope};
 use git_spawn::command::interpret_trailers::TrailerIfExists;
 use git_spawn::command::maintenance::MaintenanceTask;
 use git_spawn::command::reset::ResetMode;
@@ -806,6 +807,82 @@ async fn bundle_list_heads_filters_by_ref_name() {
     );
 }
 
+/// Drive `main` and `other` into a both-modified conflict on `README` with
+/// `rerere.enabled` set, leaving the merge in progress so git has recorded a
+/// preimage for the conflict.
+async fn make_rerere_conflict() -> (tempfile::TempDir, Repository) {
+    let (tmp, repo) = common::init_repo().await;
+
+    let mut enable = ConfigCommand::set("rerere.enabled", "true");
+    enable.scope(ConfigScope::Local);
+    enable.current_dir(repo.path());
+    enable.execute().await.unwrap();
+
+    std::fs::write(repo.path().join("README"), "base\n").unwrap();
+    repo.add().path("README").execute().await.unwrap();
+    repo.commit().message("init").execute().await.unwrap();
+
+    repo.branch().create("other").execute().await.unwrap();
+    repo.checkout().target("other").execute().await.unwrap();
+    std::fs::write(repo.path().join("README"), "other side\n").unwrap();
+    repo.add().path("README").execute().await.unwrap();
+    repo.commit().message("other").execute().await.unwrap();
+
+    repo.checkout().target("main").execute().await.unwrap();
+    std::fs::write(repo.path().join("README"), "main side\n").unwrap();
+    repo.add().path("README").execute().await.unwrap();
+    repo.commit().message("main").execute().await.unwrap();
+
+    // The merge fails and leaves README unmerged; the non-zero exit is
+    // expected here.
+    let merged = repo.merge().commit_ref("other").execute().await;
+    assert!(merged.is_err(), "merge should conflict");
+
+    (tmp, repo)
+}
+
+/// Resolve the conflict left by [`make_rerere_conflict`] and commit it, which
+/// is what makes git store a postimage in the resolution cache.
+async fn record_rerere_resolution(repo: &Repository) {
+    std::fs::write(repo.path().join("README"), "resolved\n").unwrap();
+    repo.add().path("README").execute().await.unwrap();
+    repo.commit().message("merged").execute().await.unwrap();
+}
+
+/// Count the `rr-cache` entries holding a file with this name.
+fn rr_cache_entries_with(repo: &Repository, file: &str) -> usize {
+    let cache = repo.path().join(".git").join("rr-cache");
+    std::fs::read_dir(&cache)
+        .unwrap_or_else(|e| panic!("reading {}: {e}", cache.display()))
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.path().join(file).exists())
+        .count()
+}
+
+#[tokio::test]
+async fn rerere_status_lists_the_conflicted_path() {
+    let (_tmp, repo) = make_rerere_conflict().await;
+
+    let mut status = RerereCommand::status();
+    status.current_dir(repo.path());
+    let out = status.execute().await.unwrap();
+    assert_eq!(out.stdout_str().trim(), "README");
+}
+
+#[tokio::test]
+async fn rerere_diff_shows_the_conflict_against_its_preimage() {
+    let (_tmp, repo) = make_rerere_conflict().await;
+
+    let mut diff = RerereCommand::diff();
+    diff.current_dir(repo.path());
+    let out = diff.execute().await.unwrap();
+    let stdout = out.stdout_str();
+    assert!(
+        stdout.contains("<<<<<<<") && stdout.contains("main side"),
+        "unexpected rerere diff: {stdout}"
+    );
+}
+
 #[tokio::test]
 async fn bundle_unbundle_unpacks_objects_into_another_repository() {
     let (tmp, source) = make_repo_with_commit().await;
@@ -861,6 +938,66 @@ async fn bundle_create_without_revisions_is_rejected_before_spawning() {
         other => panic!("expected InvalidConfig, got {other:?}"),
     }
     assert!(!bundle.exists(), "git was spawned despite the guard");
+}
+
+#[tokio::test]
+async fn rerere_clear_drops_the_state_of_the_merge_in_progress() {
+    let (_tmp, repo) = make_rerere_conflict().await;
+    let merge_rr = repo.path().join(".git").join("MERGE_RR");
+    assert!(merge_rr.exists(), "the conflicted merge left no MERGE_RR");
+
+    let mut clear = RerereCommand::clear();
+    clear.current_dir(repo.path());
+    clear.execute().await.unwrap();
+
+    assert!(!merge_rr.exists(), "clear left MERGE_RR behind");
+    let mut status = RerereCommand::status();
+    status.current_dir(repo.path());
+    let out = status.execute().await.unwrap();
+    assert!(
+        out.stdout_str().trim().is_empty(),
+        "status still reports a path after clear: {}",
+        out.stdout_str()
+    );
+}
+
+#[tokio::test]
+async fn rerere_forget_drops_the_recorded_resolution() {
+    let (_tmp, repo) = make_rerere_conflict().await;
+    record_rerere_resolution(&repo).await;
+    assert_eq!(
+        rr_cache_entries_with(&repo, "postimage"),
+        1,
+        "the resolution was not recorded"
+    );
+
+    let mut forget = RerereCommand::forget("README");
+    forget.current_dir(repo.path());
+    forget.execute().await.unwrap();
+
+    assert_eq!(
+        rr_cache_entries_with(&repo, "postimage"),
+        0,
+        "forget left the postimage in place"
+    );
+}
+
+#[tokio::test]
+async fn rerere_gc_keeps_a_freshly_recorded_resolution() {
+    let (_tmp, repo) = make_rerere_conflict().await;
+    record_rerere_resolution(&repo).await;
+
+    let mut gc = RerereCommand::gc();
+    gc.current_dir(repo.path());
+    gc.execute().await.unwrap();
+
+    // Pruning is age-based (`gc.rerereResolved` defaults to 60 days), so a
+    // resolution recorded moments ago survives.
+    assert_eq!(
+        rr_cache_entries_with(&repo, "postimage"),
+        1,
+        "gc pruned a resolution recorded moments ago"
+    );
 }
 
 #[cfg(feature = "parse")]

@@ -182,7 +182,7 @@ pub use command::{
     ls_tree::LsTreeCommand, maintenance::MaintenanceCommand, merge::MergeCommand,
     merge_base::MergeBaseCommand, mv::MvCommand, notes::NotesCommand, pull::PullCommand,
     push::PushCommand, range_diff::RangeDiffCommand, rebase::RebaseCommand, reflog::ReflogCommand,
-    remote::RemoteCommand, reset::ResetCommand, restore::RestoreCommand,
+    remote::RemoteCommand, rerere::RerereCommand, reset::ResetCommand, restore::RestoreCommand,
     rev_parse::RevParseCommand, revert::RevertCommand, rm::RmCommand, shortlog::ShortlogCommand,
     show::ShowCommand, show_ref::ShowRefCommand, stash::StashCommand, status::StatusCommand,
     submodule::SubmoduleCommand, switch::SwitchCommand, symbolic_ref::SymbolicRefCommand,
