@@ -6,8 +6,8 @@ use git_spawn::{
     FormatPatchCommand, FsckCommand, GcCommand, GitCommand, HashObjectCommand,
     InterpretTrailersCommand, LogCommand, LsFilesCommand, LsTreeCommand, MaintenanceCommand,
     MergeBaseCommand, RangeDiffCommand, Repository, RerereCommand, RevParseCommand, RevertCommand,
-    ShortlogCommand, ShowRefCommand, SymbolicRefCommand, UpdateRefCommand, VerifyCommitCommand,
-    VerifyTagCommand,
+    ShortlogCommand, ShowRefCommand, SparseCheckoutCommand, SymbolicRefCommand, UpdateRefCommand,
+    VerifyCommitCommand, VerifyTagCommand,
 };
 
 use git_spawn::command::archive::ArchiveFormat;
@@ -913,6 +913,65 @@ async fn rerere_diff_shows_the_conflict_against_its_preimage() {
     );
 }
 
+/// Commit `a/f`, `b/f` and `top.txt`, so a pattern set naming one directory
+/// has something to leave out.
+async fn make_repo_with_two_directories() -> (tempfile::TempDir, Repository) {
+    let (tmp, repo) = common::init_repo().await;
+    for dir in ["a", "b"] {
+        std::fs::create_dir(repo.path().join(dir)).unwrap();
+        std::fs::write(repo.path().join(dir).join("f"), "contents\n").unwrap();
+    }
+    std::fs::write(repo.path().join("top.txt"), "top\n").unwrap();
+    repo.add().all().execute().await.unwrap();
+    repo.commit().message("files").execute().await.unwrap();
+    (tmp, repo)
+}
+
+/// The pattern set `sparse-checkout list` reports, one pattern per line.
+async fn sparse_patterns(repo: &Repository) -> Vec<String> {
+    let mut list = SparseCheckoutCommand::list();
+    list.current_dir(repo.path());
+    let out = list.execute().await.expect("sparse-checkout list");
+    out.stdout_str()
+        .lines()
+        .map(|line| line.trim().to_string())
+        .filter(|line| !line.is_empty())
+        .collect()
+}
+
+#[tokio::test]
+async fn sparse_checkout_set_limits_the_working_tree_to_the_pattern() {
+    let (_tmp, repo) = make_repo_with_two_directories().await;
+
+    let mut set = SparseCheckoutCommand::set("a");
+    set.current_dir(repo.path());
+    set.execute().await.unwrap();
+
+    assert_eq!(sparse_patterns(&repo).await, vec!["a"]);
+    assert!(repo.path().join("a").join("f").exists(), "a/f was dropped");
+    assert!(!repo.path().join("b").join("f").exists(), "b/f was kept");
+    // Cone mode always keeps the files at the top level.
+    assert!(repo.path().join("top.txt").exists(), "top.txt was dropped");
+}
+
+#[tokio::test]
+async fn sparse_checkout_add_extends_the_pattern_set() {
+    let (_tmp, repo) = make_repo_with_two_directories().await;
+    let mut set = SparseCheckoutCommand::set("a");
+    set.current_dir(repo.path());
+    set.execute().await.unwrap();
+
+    let mut add = SparseCheckoutCommand::add("b");
+    add.current_dir(repo.path());
+    add.execute().await.unwrap();
+
+    assert_eq!(sparse_patterns(&repo).await, vec!["a", "b"]);
+    assert!(
+        repo.path().join("b").join("f").exists(),
+        "b/f was not added"
+    );
+}
+
 #[tokio::test]
 async fn bundle_unbundle_unpacks_objects_into_another_repository() {
     let (tmp, source) = make_repo_with_commit().await;
@@ -1033,6 +1092,64 @@ async fn rerere_gc_keeps_a_freshly_recorded_resolution() {
         rr_cache_entries_with(&repo, "postimage"),
         1,
         "gc pruned a resolution recorded moments ago"
+    );
+}
+
+#[tokio::test]
+async fn sparse_checkout_set_replaces_the_pattern_set() {
+    let (_tmp, repo) = make_repo_with_two_directories().await;
+    let mut first = SparseCheckoutCommand::set("a");
+    first.current_dir(repo.path());
+    first.execute().await.unwrap();
+
+    // `set` is not additive: naming only `b` drops `a` again.
+    let mut second = SparseCheckoutCommand::set("b");
+    second.current_dir(repo.path());
+    second.execute().await.unwrap();
+
+    assert_eq!(sparse_patterns(&repo).await, vec!["b"]);
+    assert!(!repo.path().join("a").join("f").exists(), "a/f was kept");
+}
+
+#[tokio::test]
+async fn sparse_checkout_init_no_cone_writes_the_full_pattern_defaults() {
+    let (_tmp, repo) = make_repo_with_two_directories().await;
+
+    let mut init = SparseCheckoutCommand::init();
+    init.no_cone();
+    init.current_dir(repo.path());
+    init.execute().await.unwrap();
+
+    // Outside cone mode the patterns are gitignore-style rather than paths:
+    // take everything at the root, then exclude every directory.
+    assert_eq!(sparse_patterns(&repo).await, vec!["/*", "!/*/"]);
+    assert!(repo.path().join("top.txt").exists(), "top.txt was dropped");
+    assert!(!repo.path().join("a").join("f").exists(), "a/f was kept");
+}
+
+#[tokio::test]
+async fn sparse_checkout_disable_restores_the_full_checkout() {
+    let (_tmp, repo) = make_repo_with_two_directories().await;
+    let mut set = SparseCheckoutCommand::set("a");
+    set.current_dir(repo.path());
+    set.execute().await.unwrap();
+    assert!(!repo.path().join("b").join("f").exists());
+
+    let mut disable = SparseCheckoutCommand::disable();
+    disable.current_dir(repo.path());
+    disable.execute().await.unwrap();
+
+    assert!(
+        repo.path().join("b").join("f").exists(),
+        "b/f was not restored"
+    );
+    // With sparse checkout off there is no pattern set to report, and `list`
+    // fails rather than printing nothing.
+    let mut list = SparseCheckoutCommand::list();
+    list.current_dir(repo.path());
+    assert!(
+        list.execute().await.is_err(),
+        "list succeeded after disable"
     );
 }
 

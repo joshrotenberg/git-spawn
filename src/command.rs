@@ -112,6 +112,7 @@ pub mod rm;
 pub mod shortlog;
 pub mod show;
 pub mod show_ref;
+pub mod sparse_checkout;
 pub mod stash;
 pub mod status;
 pub mod submodule;
