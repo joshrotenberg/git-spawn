@@ -813,10 +813,22 @@ async fn bundle_list_heads_filters_by_ref_name() {
 async fn make_rerere_conflict() -> (tempfile::TempDir, Repository) {
     let (tmp, repo) = common::init_repo().await;
 
-    let mut enable = ConfigCommand::set("rerere.enabled", "true");
-    enable.scope(ConfigScope::Local);
-    enable.current_dir(repo.path());
-    enable.execute().await.unwrap();
+    // `rerere.enabled` is what makes git record anything at all. The two
+    // maintenance switches keep `commit` from detaching a background
+    // `gc`/`maintenance` run, which competes for `MERGE_RR.lock` with the
+    // rerere action the test is about to take.
+    for (key, value) in [
+        ("rerere.enabled", "true"),
+        ("gc.auto", "0"),
+        ("maintenance.auto", "false"),
+    ] {
+        let mut cfg = ConfigCommand::set(key, value);
+        cfg.scope(ConfigScope::Local);
+        cfg.current_dir(repo.path());
+        cfg.execute()
+            .await
+            .unwrap_or_else(|e| panic!("git config {key} failed: {e}"));
+    }
 
     std::fs::write(repo.path().join("README"), "base\n").unwrap();
     repo.add().path("README").execute().await.unwrap();
@@ -964,6 +976,8 @@ async fn rerere_clear_drops_the_state_of_the_merge_in_progress() {
     let merge_rr = repo.path().join(".git").join("MERGE_RR");
     assert!(merge_rr.exists(), "the conflicted merge left no MERGE_RR");
 
+    wait_for_merge_rr_unlocked(&repo).await;
+
     let mut clear = RerereCommand::clear();
     clear.current_dir(repo.path());
     clear.execute().await.unwrap();
@@ -1006,6 +1020,8 @@ async fn rerere_forget_drops_the_recorded_resolution() {
 async fn rerere_gc_keeps_a_freshly_recorded_resolution() {
     let (_tmp, repo) = make_rerere_conflict().await;
     record_rerere_resolution(&repo).await;
+
+    wait_for_merge_rr_unlocked(&repo).await;
 
     let mut gc = RerereCommand::gc();
     gc.current_dir(repo.path());
