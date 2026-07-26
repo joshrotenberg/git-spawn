@@ -1,12 +1,13 @@
 //! Integration tests for plumbing commands and typed parsers.
 
 use git_spawn::{
-    AmCommand, ApplyCommand, ArchiveCommand, BlameCommand, CatFileCommand, CherryCommand,
-    CleanCommand, DescribeCommand, Error, ForEachRefCommand, FormatPatchCommand, FsckCommand,
-    GcCommand, GitCommand, HashObjectCommand, InterpretTrailersCommand, LogCommand, LsFilesCommand,
-    LsTreeCommand, MaintenanceCommand, MergeBaseCommand, RangeDiffCommand, Repository,
-    RevParseCommand, RevertCommand, ShortlogCommand, ShowRefCommand, SymbolicRefCommand,
-    UpdateRefCommand, VerifyCommitCommand, VerifyTagCommand,
+    AmCommand, ApplyCommand, ArchiveCommand, BlameCommand, BranchCommand, BundleCommand,
+    CatFileCommand, CherryCommand, CleanCommand, DescribeCommand, Error, ForEachRefCommand,
+    FormatPatchCommand, FsckCommand, GcCommand, GitCommand, HashObjectCommand,
+    InterpretTrailersCommand, LogCommand, LsFilesCommand, LsTreeCommand, MaintenanceCommand,
+    MergeBaseCommand, RangeDiffCommand, Repository, RevParseCommand, RevertCommand,
+    ShortlogCommand, ShowRefCommand, SymbolicRefCommand, UpdateRefCommand, VerifyCommitCommand,
+    VerifyTagCommand,
 };
 
 use git_spawn::command::archive::ArchiveFormat;
@@ -753,6 +754,113 @@ async fn blame_rejects_a_zero_start_line() {
         cmd.execute().await,
         Err(Error::InvalidConfig { .. })
     ));
+}
+
+#[tokio::test]
+async fn bundle_create_then_verify_and_list_heads() {
+    let (tmp, repo) = make_repo_with_commit().await;
+    let bundle = tmp.path().join("all.bundle");
+
+    let mut create = BundleCommand::create(&bundle);
+    create.current_dir(repo.path()).all().quiet();
+    create.execute().await.unwrap();
+    assert!(bundle.is_file(), "bundle file was not written");
+
+    let mut verify = BundleCommand::verify(&bundle);
+    verify.current_dir(repo.path());
+    verify.execute().await.unwrap();
+
+    let mut heads = BundleCommand::list_heads(&bundle);
+    heads.current_dir(repo.path());
+    let out = heads.execute().await.unwrap();
+    assert!(
+        out.stdout_str().contains("refs/heads/main"),
+        "unexpected list-heads output: {}",
+        out.stdout_str()
+    );
+}
+
+#[tokio::test]
+async fn bundle_list_heads_filters_by_ref_name() {
+    let (tmp, repo) = make_repo_with_commit().await;
+    let mut branch = BranchCommand::new();
+    branch.current_dir(repo.path()).create("topic");
+    branch.execute().await.unwrap();
+
+    let bundle = tmp.path().join("all.bundle");
+    let mut create = BundleCommand::create(&bundle);
+    create.current_dir(repo.path()).all().quiet();
+    create.execute().await.unwrap();
+
+    let mut heads = BundleCommand::list_heads(&bundle);
+    heads.current_dir(repo.path()).ref_name("refs/heads/topic");
+    let out = heads.execute().await.unwrap();
+    let stdout = out.stdout_str();
+    assert!(
+        stdout.contains("refs/heads/topic"),
+        "requested ref missing: {stdout}"
+    );
+    assert!(
+        !stdout.contains("refs/heads/main"),
+        "filter did not exclude the other ref: {stdout}"
+    );
+}
+
+#[tokio::test]
+async fn bundle_unbundle_unpacks_objects_into_another_repository() {
+    let (tmp, source) = make_repo_with_commit().await;
+    let bundle = tmp.path().join("all.bundle");
+    let mut create = BundleCommand::create(&bundle);
+    create.current_dir(source.path()).all().quiet();
+    create.execute().await.unwrap();
+
+    let mut head = RevParseCommand::new();
+    head.current_dir(source.path()).arg_str("HEAD");
+    let sha = head.execute().await.unwrap();
+
+    let (_target_tmp, target) = common::init_repo().await;
+    let mut unbundle = BundleCommand::unbundle(&bundle);
+    unbundle.current_dir(target.path());
+    let out = unbundle.execute().await.unwrap();
+
+    // unbundle unpacks the objects and reports the refs the bundle carries; it
+    // does not update the receiving repository's refs itself.
+    assert!(
+        out.stdout_str().contains("refs/heads/main"),
+        "unexpected unbundle output: {}",
+        out.stdout_str()
+    );
+    let mut kind = CatFileCommand::object_type(&sha);
+    kind.current_dir(target.path());
+    assert_eq!(kind.execute().await.unwrap(), "commit");
+}
+
+#[tokio::test]
+async fn bundle_verify_rejects_a_file_that_is_not_a_bundle() {
+    let (tmp, repo) = make_repo_with_commit().await;
+    let bogus = tmp.path().join("not.bundle");
+    std::fs::write(&bogus, "not a bundle\n").unwrap();
+
+    let mut verify = BundleCommand::verify(&bogus);
+    verify.current_dir(repo.path());
+    match verify.execute().await {
+        Err(Error::CommandFailed { .. }) => {}
+        other => panic!("expected CommandFailed, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn bundle_create_without_revisions_is_rejected_before_spawning() {
+    let (tmp, repo) = make_repo_with_commit().await;
+    let bundle = tmp.path().join("empty.bundle");
+
+    let mut create = BundleCommand::create(&bundle);
+    create.current_dir(repo.path());
+    match create.execute().await {
+        Err(Error::InvalidConfig { .. }) => {}
+        other => panic!("expected InvalidConfig, got {other:?}"),
+    }
+    assert!(!bundle.exists(), "git was spawned despite the guard");
 }
 
 #[cfg(feature = "parse")]

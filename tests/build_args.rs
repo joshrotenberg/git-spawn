@@ -780,6 +780,23 @@ fn maintenance_run_quiet_with_repeated_tasks() {
 }
 
 #[test]
+fn bundle_create_all_quiet_and_versioned() {
+    let mut c = BundleCommand::create("/tmp/r.bundle");
+    c.quiet().version(2).all();
+    assert_eq!(
+        args_of(&c),
+        vec![
+            "bundle",
+            "create",
+            "--quiet",
+            "--version=2",
+            "/tmp/r.bundle",
+            "--all"
+        ]
+    );
+}
+
+#[test]
 fn interpret_trailers_placement_and_conflict_actions() {
     let mut c = InterpretTrailersCommand::new();
     c.in_place()
@@ -1054,4 +1071,60 @@ fn archive_format_raw_after_format_wins() {
     let mut c = ArchiveCommand::new("HEAD");
     c.format(ArchiveFormat::TarGz).format_raw("zip");
     assert_eq!(args_of(&c), vec!["archive", "--format=zip", "HEAD"]);
+}
+
+#[test]
+fn bundle_create_keeps_rev_list_args_after_the_file() {
+    let mut c = BundleCommand::create("/tmp/r.bundle");
+    c.rev("main").rev("v1.0..topic");
+    assert_eq!(
+        args_of(&c),
+        vec!["bundle", "create", "/tmp/r.bundle", "main", "v1.0..topic"]
+    );
+}
+
+#[test]
+fn bundle_create_progress_after_quiet_wins() {
+    let mut c = BundleCommand::create("/tmp/r.bundle");
+    c.quiet().progress().all();
+    assert_eq!(
+        args_of(&c),
+        vec!["bundle", "create", "--progress", "/tmp/r.bundle", "--all"]
+    );
+}
+
+#[test]
+fn bundle_verify_quiet() {
+    let mut c = BundleCommand::verify("/tmp/r.bundle");
+    c.quiet();
+    assert_eq!(
+        args_of(&c),
+        vec!["bundle", "verify", "--quiet", "/tmp/r.bundle"]
+    );
+}
+
+#[test]
+fn bundle_list_heads_filtered_by_ref() {
+    let mut c = BundleCommand::list_heads("/tmp/r.bundle");
+    c.ref_name("refs/heads/main");
+    assert_eq!(
+        args_of(&c),
+        vec!["bundle", "list-heads", "/tmp/r.bundle", "refs/heads/main"]
+    );
+}
+
+#[test]
+fn bundle_unbundle_with_progress_and_refs() {
+    let mut c = BundleCommand::unbundle("/tmp/r.bundle");
+    c.progress().ref_name("refs/heads/main");
+    assert_eq!(
+        args_of(&c),
+        vec![
+            "bundle",
+            "unbundle",
+            "--progress",
+            "/tmp/r.bundle",
+            "refs/heads/main"
+        ]
+    );
 }
