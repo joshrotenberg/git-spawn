@@ -859,6 +859,24 @@ fn rr_cache_entries_with(repo: &Repository, file: &str) -> usize {
         .count()
 }
 
+/// Wait for a stale `MERGE_RR.lock` to go away.
+///
+/// The commit that concludes a merge can leave the lock in place for a moment,
+/// and any `rerere` action that writes `MERGE_RR` fails with "Another git
+/// process seems to be running" while it is there. Seen once on the macOS CI
+/// runner with git 2.55; every command this test issued has already exited, so
+/// the wait is for git's own background cleanup rather than for a peer.
+async fn wait_for_merge_rr_unlocked(repo: &Repository) {
+    let lock = repo.path().join(".git").join("MERGE_RR.lock");
+    for _ in 0..50 {
+        if !lock.exists() {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    panic!("{} was never released", lock.display());
+}
+
 #[tokio::test]
 async fn rerere_status_lists_the_conflicted_path() {
     let (_tmp, repo) = make_rerere_conflict().await;
@@ -970,6 +988,8 @@ async fn rerere_forget_drops_the_recorded_resolution() {
         1,
         "the resolution was not recorded"
     );
+
+    wait_for_merge_rr_unlocked(&repo).await;
 
     let mut forget = RerereCommand::forget("README");
     forget.current_dir(repo.path());
