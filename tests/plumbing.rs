@@ -3,8 +3,8 @@
 use git_spawn::{
     AmCommand, ApplyCommand, BlameCommand, CatFileCommand, CherryCommand, DescribeCommand, Error,
     ForEachRefCommand, FormatPatchCommand, GitCommand, HashObjectCommand, LogCommand,
-    LsFilesCommand, LsTreeCommand, Repository, RevParseCommand, ShowRefCommand, SymbolicRefCommand,
-    UpdateRefCommand, VerifyCommitCommand, VerifyTagCommand,
+    LsFilesCommand, LsTreeCommand, RangeDiffCommand, Repository, RevParseCommand, ShowRefCommand,
+    SymbolicRefCommand, UpdateRefCommand, VerifyCommitCommand, VerifyTagCommand,
 };
 
 use git_spawn::command::reset::ResetMode;
@@ -829,4 +829,93 @@ mod blame_parser {
         assert_eq!(entries[1].final_line, 3);
         assert_eq!(entries[1].content.as_deref(), Some("three"));
     }
+}
+
+/// Build two versions of the same one-commit series: `v1` adds `feature.txt`,
+/// and `v2` is that commit amended with one line of the patch rewritten. The
+/// two patches stay close enough that range-diff pairs them rather than
+/// reporting a drop and an add.
+async fn make_two_patch_series(repo: &Repository) {
+    repo.checkout().create("v1").execute().await.unwrap();
+    std::fs::write(
+        repo.path().join("feature.txt"),
+        "one\ntwo\nthree\nfour\nfive\n",
+    )
+    .unwrap();
+    repo.add().path("feature.txt").execute().await.unwrap();
+    repo.commit()
+        .message("add feature")
+        .execute()
+        .await
+        .unwrap();
+
+    repo.checkout()
+        .create("v2")
+        .target("v1")
+        .execute()
+        .await
+        .unwrap();
+    std::fs::write(
+        repo.path().join("feature.txt"),
+        "one\ntwo\nthree\nfour\nFIVE\n",
+    )
+    .unwrap();
+    repo.add().path("feature.txt").execute().await.unwrap();
+    repo.commit().amend().no_edit().execute().await.unwrap();
+}
+
+#[tokio::test]
+async fn range_diff_pairs_a_rewritten_commit() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    make_two_patch_series(&repo).await;
+
+    let mut cmd = RangeDiffCommand::new();
+    cmd.current_dir(repo.path()).rev("main..v1").rev("main..v2");
+    let out = cmd.execute().await.unwrap();
+    let stdout = out.stdout_str();
+    assert!(
+        stdout.contains("add feature"),
+        "expected the commit subject: {stdout}"
+    );
+    assert!(
+        stdout.contains('!'),
+        "expected a changed-commit marker: {stdout}"
+    );
+}
+
+#[tokio::test]
+async fn range_diff_accepts_the_symmetric_form() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    make_two_patch_series(&repo).await;
+
+    let mut cmd = RangeDiffCommand::new();
+    cmd.current_dir(repo.path())
+        .rev("v1...v2")
+        .creation_factor(90);
+    let out = cmd.execute().await.unwrap();
+    assert!(
+        out.stdout_str().contains("add feature"),
+        "expected the commit subject: {}",
+        out.stdout_str()
+    );
+}
+
+#[tokio::test]
+async fn range_diff_without_revisions_is_rejected() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let mut cmd = RangeDiffCommand::new();
+    cmd.current_dir(repo.path());
+    assert!(cmd.execute().await.is_err());
+}
+
+#[tokio::test]
+async fn range_diff_with_four_revisions_is_rejected() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let mut cmd = RangeDiffCommand::new();
+    cmd.current_dir(repo.path())
+        .rev("main")
+        .rev("v1")
+        .rev("v2")
+        .rev("v3");
+    assert!(cmd.execute().await.is_err());
 }

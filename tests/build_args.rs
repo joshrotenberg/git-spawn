@@ -647,3 +647,45 @@ fn blame_show_email_keeps_the_human_format() {
     c.file("src/lib.rs").show_email();
     assert_eq!(args_of(&c), vec!["blame", "-e", "--", "src/lib.rs"]);
 }
+
+#[test]
+fn range_diff_two_ranges() {
+    let mut c = RangeDiffCommand::new();
+    c.rev("main..v1").rev("main..v2");
+    assert_eq!(args_of(&c), vec!["range-diff", "main..v1", "main..v2"]);
+}
+
+#[test]
+fn range_diff_base_form_with_options() {
+    let mut c = RangeDiffCommand::new();
+    c.rev("main")
+        .rev("v1")
+        .rev("v2")
+        .no_dual_color()
+        .creation_factor(90);
+    assert_eq!(
+        args_of(&c),
+        vec![
+            "range-diff",
+            "--no-dual-color",
+            "--creation-factor=90",
+            "main",
+            "v1",
+            "v2"
+        ]
+    );
+}
+
+#[test]
+fn range_diff_symmetric_form_left_and_right_only() {
+    let mut left = RangeDiffCommand::new();
+    left.rev("v1...v2").left_only();
+    assert_eq!(args_of(&left), vec!["range-diff", "--left-only", "v1...v2"]);
+
+    let mut right = RangeDiffCommand::new();
+    right.rev("v1...v2").right_only();
+    assert_eq!(
+        args_of(&right),
+        vec!["range-diff", "--right-only", "v1...v2"]
+    );
+}
