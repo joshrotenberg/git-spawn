@@ -4,10 +4,10 @@ use git_spawn::{
     AmCommand, ApplyCommand, ArchiveCommand, BlameCommand, BranchCommand, BundleCommand,
     CatFileCommand, CherryCommand, CleanCommand, DescribeCommand, Error, ForEachRefCommand,
     FormatPatchCommand, FsckCommand, GcCommand, GitCommand, HashObjectCommand,
-    InterpretTrailersCommand, LogCommand, LsFilesCommand, LsTreeCommand, MaintenanceCommand,
-    MergeBaseCommand, RangeDiffCommand, Repository, RerereCommand, RevParseCommand, RevertCommand,
-    ShortlogCommand, ShowRefCommand, SparseCheckoutCommand, SymbolicRefCommand, UpdateRefCommand,
-    VerifyCommitCommand, VerifyTagCommand,
+    InterpretTrailersCommand, LogCommand, LsFilesCommand, LsRemoteCommand, LsTreeCommand,
+    MaintenanceCommand, MergeBaseCommand, RangeDiffCommand, Repository, RerereCommand,
+    RevParseCommand, RevertCommand, ShortlogCommand, ShowRefCommand, SparseCheckoutCommand,
+    SymbolicRefCommand, UpdateRefCommand, VerifyCommitCommand, VerifyTagCommand,
 };
 
 use git_spawn::command::archive::ArchiveFormat;
@@ -1808,6 +1808,20 @@ async fn make_repo_with_two_authors() -> (tempfile::TempDir, Repository) {
     (tmp, repo)
 }
 
+/// A local repository is a valid `ls-remote` target, so these tests query a
+/// real remote without touching the network.
+async fn make_remote_with_a_tag() -> (tempfile::TempDir, Repository) {
+    let (tmp, repo) = make_repo_with_commit().await;
+    repo.tag()
+        .name("v1.0")
+        .annotated()
+        .message("release 1.0")
+        .execute()
+        .await
+        .unwrap();
+    (tmp, repo)
+}
+
 #[tokio::test]
 async fn shortlog_groups_commits_by_author() {
     let (_tmp, repo) = make_repo_with_two_authors().await;
@@ -1857,6 +1871,57 @@ async fn shortlog_pathspecs_limit_the_report() {
     assert!(
         !stdout.contains("add one"),
         "the pathspec did not limit the report: {stdout}"
+    );
+}
+
+#[tokio::test]
+async fn ls_remote_lists_a_local_repositorys_refs() {
+    let (_tmp, remote) = make_remote_with_a_tag().await;
+
+    let cmd = LsRemoteCommand::remote(remote.path().to_string_lossy());
+    let out = cmd.execute().await.unwrap();
+    let stdout = out.stdout_str();
+
+    assert!(
+        stdout.contains("refs/heads/main"),
+        "missing branch: {stdout}"
+    );
+    assert!(stdout.contains("refs/tags/v1.0"), "missing tag: {stdout}");
+    assert!(stdout.contains("HEAD"), "missing HEAD: {stdout}");
+}
+
+#[tokio::test]
+async fn ls_remote_heads_excludes_tags() {
+    let (_tmp, remote) = make_remote_with_a_tag().await;
+
+    let mut cmd = LsRemoteCommand::remote(remote.path().to_string_lossy());
+    cmd.heads();
+    let out = cmd.execute().await.unwrap();
+    let stdout = out.stdout_str();
+
+    assert!(
+        stdout.contains("refs/heads/main"),
+        "missing branch: {stdout}"
+    );
+    assert!(
+        !stdout.contains("refs/tags/"),
+        "tags were not filtered: {stdout}"
+    );
+}
+
+#[tokio::test]
+async fn ls_remote_pattern_narrows_the_output() {
+    let (_tmp, remote) = make_remote_with_a_tag().await;
+
+    let mut cmd = LsRemoteCommand::remote(remote.path().to_string_lossy());
+    cmd.pattern("refs/tags/*");
+    let out = cmd.execute().await.unwrap();
+    let stdout = out.stdout_str();
+
+    assert!(stdout.contains("refs/tags/v1.0"), "missing tag: {stdout}");
+    assert!(
+        !stdout.contains("refs/heads/"),
+        "branches were not filtered: {stdout}"
     );
 }
 
@@ -2205,4 +2270,100 @@ async fn archive_rejects_an_unknown_format() {
         matches!(err, Error::CommandFailed { .. }),
         "unexpected error: {err:?}"
     );
+}
+
+#[tokio::test]
+async fn ls_remote_patterns_without_a_repository_are_rejected() {
+    let mut cmd = LsRemoteCommand::new();
+    cmd.pattern("refs/heads/*");
+    let err = cmd.execute().await.unwrap_err();
+    assert!(
+        matches!(err, Error::InvalidConfig { .. }),
+        "expected an invalid-config error, got {err:?}"
+    );
+}
+
+#[cfg(feature = "parse")]
+mod ls_remote_parser {
+    use super::*;
+    use git_spawn::parse::parse_ls_remote_symrefs;
+
+    #[tokio::test]
+    async fn an_annotated_tag_yields_a_peeled_entry_for_the_commit() {
+        let (_tmp, remote) = make_remote_with_a_tag().await;
+        let head = {
+            let mut rev = RevParseCommand::new();
+            rev.current_dir(remote.path()).arg_str("HEAD");
+            rev.execute().await.unwrap()
+        };
+
+        let mut cmd = LsRemoteCommand::remote(remote.path().to_string_lossy());
+        cmd.tags();
+        let entries = cmd.parse_entries(&cmd.execute().await.unwrap());
+
+        let tags: Vec<_> = entries
+            .iter()
+            .filter(|e| e.name == "refs/tags/v1.0")
+            .collect();
+        assert_eq!(
+            tags.len(),
+            2,
+            "expected the tag and its peeled line: {entries:?}"
+        );
+
+        let unpeeled = tags.iter().find(|e| !e.peeled).unwrap();
+        let peeled = tags.iter().find(|e| e.peeled).unwrap();
+        assert_eq!(peeled.sha, head, "the peeled line should name the commit");
+        assert_ne!(
+            unpeeled.sha, peeled.sha,
+            "an annotated tag object is distinct from its commit"
+        );
+    }
+
+    #[tokio::test]
+    async fn refs_flag_drops_head_and_the_peeled_lines() {
+        let (_tmp, remote) = make_remote_with_a_tag().await;
+
+        let mut cmd = LsRemoteCommand::remote(remote.path().to_string_lossy());
+        cmd.refs();
+        let entries = cmd.parse_entries(&cmd.execute().await.unwrap());
+
+        assert!(!entries.is_empty(), "expected some refs");
+        assert!(
+            entries.iter().all(|e| !e.peeled),
+            "peeled entries survived: {entries:?}"
+        );
+        assert!(
+            entries.iter().all(|e| e.name != "HEAD"),
+            "HEAD survived: {entries:?}"
+        );
+        assert!(entries.iter().any(|e| e.name == "refs/heads/main"));
+    }
+
+    #[tokio::test]
+    async fn symref_reports_what_head_points_at() {
+        let (_tmp, remote) = make_remote_with_a_tag().await;
+
+        let mut cmd = LsRemoteCommand::remote(remote.path().to_string_lossy());
+        cmd.symref();
+        let out = cmd.execute().await.unwrap();
+
+        let symrefs = parse_ls_remote_symrefs(&out.stdout_str());
+        assert_eq!(
+            symrefs
+                .iter()
+                .find(|(name, _)| name == "HEAD")
+                .map(|(_, target)| target.as_str()),
+            Some("refs/heads/main"),
+            "unexpected symrefs: {symrefs:?}"
+        );
+
+        // The symref line is not itself an entry, but HEAD still is.
+        let entries = cmd.parse_entries(&out);
+        assert!(entries.iter().any(|e| e.name == "HEAD"), "{entries:?}");
+        assert!(
+            entries.iter().all(|e| !e.sha.starts_with("ref: ")),
+            "{entries:?}"
+        );
+    }
 }
