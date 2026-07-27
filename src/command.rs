@@ -97,6 +97,7 @@ pub mod maintenance;
 pub mod merge;
 pub mod merge_base;
 pub mod mv;
+pub mod name_rev;
 pub mod notes;
 pub mod pull;
 pub mod push;
