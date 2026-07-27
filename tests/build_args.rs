@@ -689,3 +689,47 @@ fn range_diff_symmetric_form_left_and_right_only() {
         vec!["range-diff", "--right-only", "v1...v2"]
     );
 }
+
+#[test]
+fn merge_base_two_commits() {
+    let mut c = MergeBaseCommand::new();
+    c.commit("main").commit("feature");
+    assert_eq!(args_of(&c), vec!["merge-base", "main", "feature"]);
+}
+
+#[test]
+fn merge_base_all_with_several_commits() {
+    let mut c = MergeBaseCommand::new();
+    c.commits(["main", "feature", "topic"]).all();
+    assert_eq!(
+        args_of(&c),
+        vec!["merge-base", "--all", "main", "feature", "topic"]
+    );
+}
+
+#[test]
+fn merge_base_is_ancestor_puts_the_flag_first() {
+    let mut c = MergeBaseCommand::new();
+    c.commit("v1.0").is_ancestor().commit("main");
+    assert_eq!(
+        args_of(&c),
+        vec!["merge-base", "--is-ancestor", "v1.0", "main"]
+    );
+}
+
+#[test]
+fn merge_base_fork_point_with_only_a_ref() {
+    let mut c = MergeBaseCommand::new();
+    c.fork_point().commit("main");
+    assert_eq!(args_of(&c), vec!["merge-base", "--fork-point", "main"]);
+}
+
+#[test]
+fn merge_base_fork_point_with_a_ref_and_a_commit() {
+    let mut c = MergeBaseCommand::new();
+    c.fork_point().commit("main").commit("feature");
+    assert_eq!(
+        args_of(&c),
+        vec!["merge-base", "--fork-point", "main", "feature"]
+    );
+}

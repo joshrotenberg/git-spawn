@@ -3,8 +3,8 @@
 use git_spawn::{
     AmCommand, ApplyCommand, BlameCommand, CatFileCommand, CherryCommand, DescribeCommand, Error,
     ForEachRefCommand, FormatPatchCommand, GitCommand, HashObjectCommand, LogCommand,
-    LsFilesCommand, LsTreeCommand, RangeDiffCommand, Repository, RevParseCommand, ShowRefCommand,
-    SymbolicRefCommand, UpdateRefCommand, VerifyCommitCommand, VerifyTagCommand,
+    LsFilesCommand, LsTreeCommand, MergeBaseCommand, RangeDiffCommand, Repository, RevParseCommand,
+    ShowRefCommand, SymbolicRefCommand, UpdateRefCommand, VerifyCommitCommand, VerifyTagCommand,
 };
 
 use git_spawn::command::reset::ResetMode;
@@ -918,4 +918,156 @@ async fn range_diff_with_four_revisions_is_rejected() {
         .rev("v2")
         .rev("v3");
     assert!(cmd.execute().await.is_err());
+}
+
+/// Resolve a revision to its full SHA.
+async fn rev(repo: &Repository, revision: &str) -> String {
+    let mut cmd = RevParseCommand::new();
+    cmd.current_dir(repo.path()).arg_str(revision);
+    cmd.execute().await.unwrap()
+}
+
+/// A repository whose `main` and `feature` branches diverge after the initial
+/// commit, one commit each. Returns the SHA they forked from.
+async fn make_diverged_branches(repo: &Repository) -> String {
+    let base = rev(repo, "HEAD").await;
+    repo.checkout().create("feature").execute().await.unwrap();
+    commit_file(repo, "feature.txt", "feature\n", "add feature").await;
+    repo.checkout().target("main").execute().await.unwrap();
+    commit_file(repo, "main.txt", "main\n", "add main").await;
+    base
+}
+
+#[tokio::test]
+async fn merge_base_finds_the_fork_commit() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let base = make_diverged_branches(&repo).await;
+
+    let mut cmd = MergeBaseCommand::new();
+    cmd.current_dir(repo.path())
+        .commit("main")
+        .commit("feature");
+    let out = cmd.execute().await.unwrap();
+    assert_eq!(out.stdout_str().trim(), base);
+}
+
+#[tokio::test]
+async fn merge_base_is_ancestor_answers_both_ways() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    make_diverged_branches(&repo).await;
+
+    let mut yes = MergeBaseCommand::new();
+    yes.current_dir(repo.path())
+        .is_ancestor()
+        .commit("main~1")
+        .commit("feature");
+    assert!(yes.execute_is_ancestor().await.unwrap());
+
+    let mut no = MergeBaseCommand::new();
+    no.current_dir(repo.path())
+        .is_ancestor()
+        .commit("main")
+        .commit("feature");
+    assert!(!no.execute_is_ancestor().await.unwrap());
+}
+
+#[tokio::test]
+async fn merge_base_is_ancestor_needs_the_flag_and_two_commits() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+
+    // The flag decides both the output and what exit 1 means.
+    let mut unflagged = MergeBaseCommand::new();
+    unflagged
+        .current_dir(repo.path())
+        .commit("main")
+        .commit("main");
+    assert!(unflagged.execute_is_ancestor().await.is_err());
+
+    let mut three = MergeBaseCommand::new();
+    three
+        .current_dir(repo.path())
+        .is_ancestor()
+        .commits(["main", "main", "main"]);
+    assert!(three.execute_is_ancestor().await.is_err());
+    assert!(three.execute().await.is_err());
+}
+
+#[tokio::test]
+async fn merge_base_unrelated_histories_have_no_base() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    repo.checkout().orphan("detached").execute().await.unwrap();
+    commit_file(&repo, "other.txt", "other\n", "unrelated root").await;
+
+    let mut cmd = MergeBaseCommand::new();
+    cmd.current_dir(repo.path())
+        .commit("main")
+        .commit("detached");
+    // git exits 1 with no output, which execute() cannot tell from a failure.
+    assert!(cmd.execute().await.is_err());
+    assert!(cmd.execute_allow_no_base().await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn merge_base_all_reports_a_base_that_allow_no_base_unwraps() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let base = make_diverged_branches(&repo).await;
+
+    let mut cmd = MergeBaseCommand::new();
+    cmd.current_dir(repo.path())
+        .all()
+        .commit("main")
+        .commit("feature");
+    let out = cmd.execute_allow_no_base().await.unwrap().unwrap();
+    assert_eq!(out.stdout_str().trim(), base);
+}
+
+#[tokio::test]
+async fn merge_base_fork_point_reads_the_reflog() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let base = make_diverged_branches(&repo).await;
+
+    let mut cmd = MergeBaseCommand::new();
+    cmd.current_dir(repo.path())
+        .fork_point()
+        .commit("main")
+        .commit("feature");
+    let out = cmd.execute().await.unwrap();
+    assert_eq!(out.stdout_str().trim(), base);
+}
+
+#[tokio::test]
+async fn merge_base_rejects_bad_argument_counts_and_flag_combinations() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+
+    let mut one = MergeBaseCommand::new();
+    one.current_dir(repo.path()).commit("main");
+    assert!(matches!(
+        one.execute().await,
+        Err(Error::InvalidConfig { .. })
+    ));
+
+    let mut three_fork_points = MergeBaseCommand::new();
+    three_fork_points
+        .current_dir(repo.path())
+        .fork_point()
+        .commits(["main", "feature", "topic"]);
+    assert!(three_fork_points.execute().await.is_err());
+
+    let mut ancestor_and_all = MergeBaseCommand::new();
+    ancestor_and_all
+        .current_dir(repo.path())
+        .is_ancestor()
+        .all()
+        .commit("main")
+        .commit("main");
+    assert!(ancestor_and_all.execute().await.is_err());
+
+    let mut ancestor_and_fork_point = MergeBaseCommand::new();
+    ancestor_and_fork_point
+        .current_dir(repo.path())
+        .is_ancestor()
+        .fork_point()
+        .commit("main")
+        .commit("main");
+    assert!(ancestor_and_fork_point.execute().await.is_err());
 }
