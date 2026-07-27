@@ -125,6 +125,7 @@ pub mod update_ref;
 pub mod var;
 pub mod verify_commit;
 pub mod verify_tag;
+pub mod version;
 pub mod worktree;
 
 /// Default timeout applied when none is configured on the executor.

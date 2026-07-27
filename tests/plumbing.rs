@@ -8,7 +8,7 @@ use git_spawn::{
     MaintenanceCommand, MergeBaseCommand, NameRevCommand, RangeDiffCommand, Repository,
     RerereCommand, RevParseCommand, RevertCommand, ShortlogCommand, ShowRefCommand,
     SparseCheckoutCommand, SymbolicRefCommand, UpdateRefCommand, VarCommand, VerifyCommitCommand,
-    VerifyTagCommand,
+    VerifyTagCommand, VersionCommand,
 };
 
 use git_spawn::command::archive::ArchiveFormat;
@@ -2453,6 +2453,36 @@ async fn name_rev_without_a_revision_is_rejected() {
     );
 }
 
+#[tokio::test]
+async fn version_reports_the_git_version_line() {
+    let cmd = VersionCommand::new();
+    let out = cmd.execute().await.unwrap();
+    let stdout = out.stdout_str();
+    assert!(
+        stdout.starts_with("git version "),
+        "unexpected version output: {stdout:?}"
+    );
+}
+
+#[tokio::test]
+async fn version_build_options_keeps_the_version_line_and_adds_more() {
+    let mut cmd = VersionCommand::new();
+    cmd.build_options();
+    let out = cmd.execute().await.unwrap();
+    let stdout = out.stdout_str();
+    let mut lines = stdout.lines();
+    assert!(
+        lines.next().is_some_and(|l| l.starts_with("git version ")),
+        "unexpected build-options output: {stdout:?}"
+    );
+    // The build lines vary by platform and git version; only their presence
+    // is portable.
+    assert!(
+        lines.next().is_some(),
+        "expected build option lines after the version line: {stdout:?}"
+    );
+}
+
 #[cfg(feature = "parse")]
 mod ls_remote_parser {
     use super::*;
@@ -2564,4 +2594,38 @@ async fn var_rejects_neither_and_both() {
         both.execute().await,
         Err(Error::InvalidConfig { .. })
     ));
+}
+
+#[cfg(feature = "parse")]
+mod version_parser {
+    use super::*;
+
+    #[tokio::test]
+    async fn parses_the_running_git_version() {
+        let cmd = VersionCommand::new();
+        let out = cmd.execute().await.unwrap();
+        let version = cmd
+            .parse_version(&out)
+            .unwrap_or_else(|| panic!("unparsed version output: {:?}", out.stdout_str()));
+
+        // git has been 2.x since 2014, and every command this crate wraps
+        // predates that; anything older would fail long before this assert.
+        assert_eq!(version.major, 2, "unexpected major: {version:?}");
+        assert!(version.is_at_least(2, 0, 0));
+        assert!(out.stdout_str().contains(&version.raw));
+    }
+
+    #[tokio::test]
+    async fn parses_the_version_line_out_of_build_options_output() {
+        let mut cmd = VersionCommand::new();
+        cmd.build_options();
+        let out = cmd.execute().await.unwrap();
+        let version = cmd
+            .parse_version(&out)
+            .unwrap_or_else(|| panic!("unparsed build-options output: {:?}", out.stdout_str()));
+
+        let plain = VersionCommand::new();
+        let plain_out = plain.execute().await.unwrap();
+        assert_eq!(Some(version), plain.parse_version(&plain_out));
+    }
 }

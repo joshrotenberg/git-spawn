@@ -28,6 +28,7 @@
 //! - [`status`] — parse `git status --porcelain=v1 -z` output, with
 //!   [`status::parse_full_status`] additionally covering the `-b` branch header
 //! - [`submodule`] — parse `git submodule status` output into [`submodule::SubmoduleEntry`] entries
+//! - [`version`] — parse `git --version` output into a [`version::GitVersion`]
 
 pub mod bisect;
 pub mod blame;
@@ -47,6 +48,7 @@ pub mod shortlog;
 pub mod show;
 pub mod status;
 pub mod submodule;
+pub mod version;
 
 pub use bisect::{BisectResult, BisectStatus, parse_bisect};
 pub use blame::{BlameEntry, parse_blame};
@@ -69,3 +71,4 @@ pub use shortlog::{ShortlogEntry, parse_shortlog};
 pub use show::{ShowResult, parse_show};
 pub use status::{Status, StatusEntry, StatusKind, parse_full_status, parse_status};
 pub use submodule::{SubmoduleEntry, SubmoduleStatus, parse_submodule_status};
+pub use version::{GitVersion, parse_version};
