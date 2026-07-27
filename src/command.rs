@@ -87,6 +87,7 @@ pub mod log;
 pub mod ls_files;
 pub mod ls_tree;
 pub mod merge;
+pub mod merge_base;
 pub mod mv;
 pub mod notes;
 pub mod pull;
