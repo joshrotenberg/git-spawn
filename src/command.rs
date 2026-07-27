@@ -122,6 +122,7 @@ pub mod switch;
 pub mod symbolic_ref;
 pub mod tag;
 pub mod update_ref;
+pub mod var;
 pub mod verify_commit;
 pub mod verify_tag;
 pub mod worktree;
