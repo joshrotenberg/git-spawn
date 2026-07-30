@@ -188,7 +188,8 @@ pub use command::{
     show_ref::ShowRefCommand, sparse_checkout::SparseCheckoutCommand, stash::StashCommand,
     status::StatusCommand, submodule::SubmoduleCommand, switch::SwitchCommand,
     symbolic_ref::SymbolicRefCommand, tag::TagCommand, update_ref::UpdateRefCommand,
-    verify_commit::VerifyCommitCommand, verify_tag::VerifyTagCommand, worktree::WorktreeCommand,
+    var::VarCommand, verify_commit::VerifyCommitCommand, verify_tag::VerifyTagCommand,
+    worktree::WorktreeCommand,
 };
 pub use error::{Error, Result};
 pub use repo::Repository;

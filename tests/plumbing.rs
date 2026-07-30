@@ -7,7 +7,7 @@ use git_spawn::{
     InterpretTrailersCommand, LogCommand, LsFilesCommand, LsRemoteCommand, LsTreeCommand,
     MaintenanceCommand, MergeBaseCommand, NameRevCommand, RangeDiffCommand, Repository,
     RerereCommand, RevParseCommand, RevertCommand, ShortlogCommand, ShowRefCommand,
-    SparseCheckoutCommand, SymbolicRefCommand, UpdateRefCommand, VerifyCommitCommand,
+    SparseCheckoutCommand, SymbolicRefCommand, UpdateRefCommand, VarCommand, VerifyCommitCommand,
     VerifyTagCommand,
 };
 
@@ -2198,6 +2198,21 @@ async fn gc_packs_loose_objects() {
 }
 
 #[tokio::test]
+async fn var_author_ident_reports_the_repository_identity() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+
+    let mut cmd = VarCommand::get("GIT_AUTHOR_IDENT");
+    cmd.current_dir(repo.path());
+    let ident = cmd.execute().await.unwrap();
+
+    // "<name> <<email>> <unix timestamp> <tz>", from the identity common::init_repo sets.
+    assert!(
+        ident.starts_with("Test <test@example.com> "),
+        "unexpected ident: {ident}"
+    );
+}
+
+#[tokio::test]
 async fn gc_prune_now_drops_an_unreachable_object() {
     let (_tmp, repo) = make_repo_with_commit().await;
 
@@ -2291,6 +2306,38 @@ async fn maintenance_run_with_an_unknown_task_fails() {
     assert!(
         matches!(err, Error::CommandFailed { .. }),
         "expected a non-zero exit, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn var_list_covers_logical_variables_and_config() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+
+    let mut cmd = VarCommand::list();
+    cmd.current_dir(repo.path());
+    let listed = cmd.execute().await.unwrap();
+
+    assert!(
+        listed.lines().any(|l| l == "user.email=test@example.com"),
+        "config missing from -l output: {listed}"
+    );
+    assert!(
+        listed.lines().any(|l| l.starts_with("GIT_AUTHOR_IDENT=")),
+        "logical variables missing from -l output: {listed}"
+    );
+}
+
+#[tokio::test]
+async fn var_unknown_variable_is_a_usage_failure() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+
+    // git answers an unknown name with `usage:` and exit 129, not an empty value.
+    let mut cmd = VarCommand::get("NOT_A_GIT_VARIABLE");
+    cmd.current_dir(repo.path());
+    let err = cmd.execute().await.unwrap_err();
+    assert!(
+        matches!(err, Error::CommandFailed { .. }),
+        "unexpected error: {err}"
     );
 }
 
@@ -2489,4 +2536,32 @@ mod ls_remote_parser {
             "{entries:?}"
         );
     }
+}
+
+#[tokio::test]
+async fn var_rejects_neither_and_both() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+
+    let mut neither = VarCommand::list();
+    neither.current_dir(repo.path());
+    neither.list = false;
+    assert!(matches!(
+        neither.execute().await,
+        Err(Error::InvalidConfig { .. })
+    ));
+
+    let mut empty_name = VarCommand::get("");
+    empty_name.current_dir(repo.path());
+    assert!(matches!(
+        empty_name.execute().await,
+        Err(Error::InvalidConfig { .. })
+    ));
+
+    let mut both = VarCommand::list();
+    both.current_dir(repo.path());
+    both.name = Some("GIT_AUTHOR_IDENT".to_string());
+    assert!(matches!(
+        both.execute().await,
+        Err(Error::InvalidConfig { .. })
+    ));
 }

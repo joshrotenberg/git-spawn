@@ -1343,3 +1343,22 @@ fn name_rev_no_revs_builds_the_bare_subcommand() {
     let c = NameRevCommand::new();
     assert_eq!(args_of(&c), vec!["name-rev"]);
 }
+
+#[test]
+fn var_named_variable() {
+    let c = VarCommand::get("GIT_AUTHOR_IDENT");
+    assert_eq!(args_of(&c), vec!["var", "GIT_AUTHOR_IDENT"]);
+}
+
+#[test]
+fn var_list() {
+    let c = VarCommand::list();
+    assert_eq!(args_of(&c), vec!["var", "-l"]);
+}
+
+#[test]
+fn var_name_and_list_together_build_both_and_are_rejected_at_execute() {
+    let mut c = VarCommand::list();
+    c.name = Some("GIT_EDITOR".to_string());
+    assert_eq!(args_of(&c), vec!["var", "-l", "GIT_EDITOR"]);
+}
