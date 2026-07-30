@@ -1163,3 +1163,82 @@ fn rerere_pathspec_is_ignored_by_the_other_actions() {
     c.pathspec("README");
     assert_eq!(args_of(&c), vec!["rerere", "status"]);
 }
+
+#[test]
+fn sparse_checkout_list_and_disable() {
+    assert_eq!(
+        args_of(&SparseCheckoutCommand::list()),
+        vec!["sparse-checkout", "list"]
+    );
+    assert_eq!(
+        args_of(&SparseCheckoutCommand::disable()),
+        vec!["sparse-checkout", "disable"]
+    );
+}
+
+#[test]
+fn sparse_checkout_init_toggles() {
+    assert_eq!(
+        args_of(&SparseCheckoutCommand::init()),
+        vec!["sparse-checkout", "init"]
+    );
+
+    let mut cone = SparseCheckoutCommand::init();
+    cone.cone().sparse_index();
+    assert_eq!(
+        args_of(&cone),
+        vec!["sparse-checkout", "init", "--cone", "--sparse-index"]
+    );
+
+    let mut plain = SparseCheckoutCommand::init();
+    plain.no_cone().no_sparse_index();
+    assert_eq!(
+        args_of(&plain),
+        vec!["sparse-checkout", "init", "--no-cone", "--no-sparse-index"]
+    );
+}
+
+#[test]
+fn sparse_checkout_set_takes_its_pattern_from_the_constructor() {
+    let c = SparseCheckoutCommand::set("src");
+    assert_eq!(args_of(&c), vec!["sparse-checkout", "set", "src"]);
+}
+
+#[test]
+fn sparse_checkout_set_appends_further_patterns_after_its_options() {
+    let mut c = SparseCheckoutCommand::set("src");
+    c.pattern("docs").no_cone().skip_checks();
+    assert_eq!(
+        args_of(&c),
+        vec![
+            "sparse-checkout",
+            "set",
+            "--no-cone",
+            "--skip-checks",
+            "src",
+            "docs"
+        ]
+    );
+}
+
+#[test]
+fn sparse_checkout_add_appends_further_patterns() {
+    let mut c = SparseCheckoutCommand::add("src");
+    c.pattern("docs").skip_checks();
+    assert_eq!(
+        args_of(&c),
+        vec!["sparse-checkout", "add", "--skip-checks", "src", "docs"]
+    );
+}
+
+#[test]
+fn sparse_checkout_options_are_ignored_by_the_actions_they_do_not_apply_to() {
+    // `list` takes none of them, and `add` takes neither cone nor sparse-index.
+    let mut list = SparseCheckoutCommand::list();
+    list.pattern("src").cone().sparse_index().skip_checks();
+    assert_eq!(args_of(&list), vec!["sparse-checkout", "list"]);
+
+    let mut add = SparseCheckoutCommand::add("src");
+    add.cone().sparse_index();
+    assert_eq!(args_of(&add), vec!["sparse-checkout", "add", "src"]);
+}
