@@ -4,12 +4,13 @@ use git_spawn::{
     AmCommand, ApplyCommand, BlameCommand, CatFileCommand, CherryCommand, CleanCommand,
     DescribeCommand, Error, ForEachRefCommand, FormatPatchCommand, FsckCommand, GcCommand,
     GitCommand, HashObjectCommand, InterpretTrailersCommand, LogCommand, LsFilesCommand,
-    LsTreeCommand, MergeBaseCommand, RangeDiffCommand, Repository, RevParseCommand, RevertCommand,
-    ShortlogCommand, ShowRefCommand, SymbolicRefCommand, UpdateRefCommand, VerifyCommitCommand,
-    VerifyTagCommand,
+    LsTreeCommand, MaintenanceCommand, MergeBaseCommand, RangeDiffCommand, Repository,
+    RevParseCommand, RevertCommand, ShortlogCommand, ShowRefCommand, SymbolicRefCommand,
+    UpdateRefCommand, VerifyCommitCommand, VerifyTagCommand,
 };
 
 use git_spawn::command::interpret_trailers::TrailerIfExists;
+use git_spawn::command::maintenance::MaintenanceTask;
 use git_spawn::command::reset::ResetMode;
 
 mod common;
@@ -1594,6 +1595,45 @@ async fn fsck_reports_a_dangling_object_by_default() {
     );
 }
 
+// `git maintenance`. Registration writes `maintenance.repo` to the user's
+// global config, so every test here passes `--config-file` pointing into the
+// tempdir: the real global config is never touched.
+
+#[tokio::test]
+async fn maintenance_run_writes_the_commit_graph() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    // The commit-graph task writes a split chain under commit-graphs/, not the
+    // single commit-graph file that a full `git gc` produces. Verified against
+    // git 2.50.1 before the assertion was written.
+    let chain = repo
+        .path()
+        .join(".git/objects/info/commit-graphs/commit-graph-chain");
+    assert!(
+        !chain.exists(),
+        "commit graph exists before maintenance ran"
+    );
+
+    let mut cmd = MaintenanceCommand::run();
+    cmd.current_dir(repo.path())
+        .quiet()
+        .task(MaintenanceTask::CommitGraph);
+    cmd.execute().await.unwrap();
+
+    assert!(chain.exists(), "maintenance run did not write {chain:?}");
+}
+
+#[tokio::test]
+async fn maintenance_run_with_an_unknown_task_fails() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let mut cmd = MaintenanceCommand::run();
+    cmd.current_dir(repo.path()).task_raw("not-a-task");
+    let err = cmd.execute().await.unwrap_err();
+    assert!(
+        matches!(err, Error::CommandFailed { .. }),
+        "expected a non-zero exit, got {err:?}"
+    );
+}
+
 #[tokio::test]
 async fn fsck_no_dangling_suppresses_the_report() {
     let (_tmp, repo) = make_repo_with_commit().await;
@@ -1606,6 +1646,32 @@ async fn fsck_no_dangling_suppresses_the_report() {
         !out.stdout_str().contains(&sha),
         "unexpected report: {}",
         out.stdout_str()
+    );
+}
+
+#[tokio::test]
+async fn maintenance_register_then_unregister_edits_the_given_config_file() {
+    let (tmp, repo) = make_repo_with_commit().await;
+    let config = tmp.path().join("fake-global-config");
+
+    let mut cmd = MaintenanceCommand::register();
+    cmd.current_dir(repo.path()).config_file(&config);
+    cmd.execute().await.unwrap();
+
+    let registered = std::fs::read_to_string(&config).unwrap();
+    assert!(
+        registered.contains("repo = "),
+        "no repo entry in {registered:?}"
+    );
+
+    let mut cmd = MaintenanceCommand::unregister();
+    cmd.current_dir(repo.path()).config_file(&config);
+    cmd.execute().await.unwrap();
+
+    let unregistered = std::fs::read_to_string(&config).unwrap();
+    assert!(
+        !unregistered.contains("repo = "),
+        "repo entry survived unregister: {unregistered:?}"
     );
 }
 
@@ -1624,4 +1690,23 @@ async fn fsck_full_unreachable_names_the_object() {
         "unexpected report: {}",
         out.stdout_str()
     );
+}
+
+#[tokio::test]
+async fn maintenance_unregister_needs_force_when_not_registered() {
+    let (tmp, repo) = make_repo_with_commit().await;
+    let config = tmp.path().join("fake-global-config");
+    std::fs::write(&config, "").unwrap();
+
+    let mut cmd = MaintenanceCommand::unregister();
+    cmd.current_dir(repo.path()).config_file(&config);
+    let err = cmd.execute().await.unwrap_err();
+    assert!(
+        matches!(err, Error::CommandFailed { .. }),
+        "expected unregistering an unregistered repo to fail, got {err:?}"
+    );
+
+    let mut cmd = MaintenanceCommand::unregister();
+    cmd.current_dir(repo.path()).force().config_file(&config);
+    cmd.execute().await.unwrap();
 }
