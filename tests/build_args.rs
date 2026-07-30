@@ -1298,3 +1298,48 @@ fn ls_remote_flags_precede_the_positional_repository() {
     c.pattern("HEAD").repository("origin").heads();
     assert_eq!(args_of(&c), vec!["ls-remote", "--heads", "origin", "HEAD"]);
 }
+
+#[test]
+fn name_rev_single_rev() {
+    let mut c = NameRevCommand::new();
+    c.rev("HEAD");
+    assert_eq!(args_of(&c), vec!["name-rev", "HEAD"]);
+}
+
+#[test]
+fn name_rev_name_only_with_several_revs() {
+    let mut c = NameRevCommand::new();
+    c.revs(["HEAD", "HEAD~1"]).name_only();
+    assert_eq!(
+        args_of(&c),
+        vec!["name-rev", "--name-only", "HEAD", "HEAD~1"]
+    );
+}
+
+#[test]
+fn name_rev_tags_puts_the_flag_before_the_rev() {
+    let mut c = NameRevCommand::new();
+    c.rev("HEAD").tags();
+    assert_eq!(args_of(&c), vec!["name-rev", "--tags", "HEAD"]);
+}
+
+#[test]
+fn name_rev_refs_repeat_into_separate_flags() {
+    let mut c = NameRevCommand::new();
+    c.refs("refs/heads/*").refs("refs/tags/v*").rev("HEAD");
+    assert_eq!(
+        args_of(&c),
+        vec![
+            "name-rev",
+            "--refs=refs/heads/*",
+            "--refs=refs/tags/v*",
+            "HEAD"
+        ]
+    );
+}
+
+#[test]
+fn name_rev_no_revs_builds_the_bare_subcommand() {
+    let c = NameRevCommand::new();
+    assert_eq!(args_of(&c), vec!["name-rev"]);
+}

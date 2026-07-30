@@ -5,9 +5,10 @@ use git_spawn::{
     CatFileCommand, CherryCommand, CleanCommand, DescribeCommand, Error, ForEachRefCommand,
     FormatPatchCommand, FsckCommand, GcCommand, GitCommand, HashObjectCommand,
     InterpretTrailersCommand, LogCommand, LsFilesCommand, LsRemoteCommand, LsTreeCommand,
-    MaintenanceCommand, MergeBaseCommand, RangeDiffCommand, Repository, RerereCommand,
-    RevParseCommand, RevertCommand, ShortlogCommand, ShowRefCommand, SparseCheckoutCommand,
-    SymbolicRefCommand, UpdateRefCommand, VerifyCommitCommand, VerifyTagCommand,
+    MaintenanceCommand, MergeBaseCommand, NameRevCommand, RangeDiffCommand, Repository,
+    RerereCommand, RevParseCommand, RevertCommand, ShortlogCommand, ShowRefCommand,
+    SparseCheckoutCommand, SymbolicRefCommand, UpdateRefCommand, VerifyCommitCommand,
+    VerifyTagCommand,
 };
 
 use git_spawn::command::archive::ArchiveFormat;
@@ -1966,6 +1967,116 @@ async fn archive_path_limits_the_contents() {
     );
 }
 
+/// Run `name-rev --name-only` over `revs` and return one name per line.
+async fn names_of(repo: &Repository, revs: &[&str]) -> Vec<String> {
+    let mut cmd = NameRevCommand::new();
+    cmd.current_dir(repo.path()).name_only().revs(revs.to_vec());
+    let out = cmd.execute().await.unwrap();
+    out.stdout_str().lines().map(str::to_string).collect()
+}
+
+#[tokio::test]
+async fn name_rev_names_head_after_its_branch() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let sha = rev(&repo, "HEAD").await;
+
+    let mut cmd = NameRevCommand::new();
+    cmd.current_dir(repo.path()).rev(&sha);
+    let out = cmd.execute().await.unwrap();
+    // The default form is "<rev> <name>", the name carrying the distance back
+    // from the ref's tip.
+    assert_eq!(out.stdout_str().trim(), format!("{sha} main"));
+}
+
+#[tokio::test]
+async fn name_rev_name_only_drops_the_revision_column() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    assert_eq!(names_of(&repo, &["HEAD"]).await, vec!["main"]);
+}
+
+#[tokio::test]
+async fn name_rev_names_several_revisions_in_order() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    commit_file(&repo, "second.txt", "second\n", "add second").await;
+
+    assert_eq!(
+        names_of(&repo, &["HEAD", "HEAD~1"]).await,
+        vec!["main", "main~1"]
+    );
+}
+
+#[tokio::test]
+async fn name_rev_tags_considers_only_tags() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    repo.tag().name("v0.1.0").execute().await.unwrap();
+    commit_file(&repo, "second.txt", "second\n", "add second").await;
+
+    // Every ref is a candidate by default, and only the branch reaches HEAD.
+    assert_eq!(
+        names_of(&repo, &["HEAD", "HEAD~1"]).await,
+        vec!["main", "tags/v0.1.0"]
+    );
+
+    let mut tagged = NameRevCommand::new();
+    tagged
+        .current_dir(repo.path())
+        .name_only()
+        .tags()
+        .rev("HEAD")
+        .rev("HEAD~1");
+    let out = tagged.execute().await.unwrap();
+    // Restricted to tags, the commit past the tag has no name left, and the
+    // tagged one loses the `tags/` prefix it carries when every ref competes.
+    assert_eq!(
+        out.stdout_str().lines().collect::<Vec<_>>(),
+        vec!["undefined", "v0.1.0"]
+    );
+}
+
+#[tokio::test]
+async fn name_rev_refs_restricts_the_candidate_refs() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    repo.tag().name("v0.1.0").execute().await.unwrap();
+
+    let mut only_tags = NameRevCommand::new();
+    only_tags
+        .current_dir(repo.path())
+        .name_only()
+        .refs("refs/tags/*")
+        .rev("HEAD");
+    assert_eq!(
+        only_tags.execute().await.unwrap().stdout_str().trim(),
+        "tags/v0.1.0"
+    );
+
+    let mut only_heads = NameRevCommand::new();
+    only_heads
+        .current_dir(repo.path())
+        .name_only()
+        .refs("refs/heads/*")
+        .rev("HEAD");
+    assert_eq!(
+        only_heads.execute().await.unwrap().stdout_str().trim(),
+        "main"
+    );
+}
+
+#[tokio::test]
+async fn name_rev_reports_undefined_when_no_candidate_ref_reaches_the_revision() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+
+    let mut cmd = NameRevCommand::new();
+    cmd.current_dir(repo.path())
+        .name_only()
+        .refs("refs/tags/nothing-matches-this/*")
+        .rev("HEAD");
+    // Naming nothing is not a failure: git exits 0 and says so in the output.
+    assert_eq!(
+        cmd.execute().await.unwrap().stdout_str().trim(),
+        "undefined"
+    );
+}
+
 #[tokio::test]
 async fn revert_without_a_commit_is_rejected() {
     let (_tmp, repo) = make_repo_with_commit().await;
@@ -2276,6 +2387,18 @@ async fn archive_rejects_an_unknown_format() {
 async fn ls_remote_patterns_without_a_repository_are_rejected() {
     let mut cmd = LsRemoteCommand::new();
     cmd.pattern("refs/heads/*");
+    let err = cmd.execute().await.unwrap_err();
+    assert!(
+        matches!(err, Error::InvalidConfig { .. }),
+        "expected an invalid-config error, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn name_rev_without_a_revision_is_rejected() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let mut cmd = NameRevCommand::new();
+    cmd.current_dir(repo.path()).tags();
     let err = cmd.execute().await.unwrap_err();
     assert!(
         matches!(err, Error::InvalidConfig { .. }),
