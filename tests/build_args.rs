@@ -2,6 +2,7 @@
 //! without spawning `git`.
 
 use git_spawn::command::{
+    interpret_trailers::{TrailerIfExists, TrailerIfMissing, TrailerWhere},
     reset::ResetMode,
     stash::{StashAction, StashCommand},
     status::StatusFormat,
@@ -731,5 +732,76 @@ fn merge_base_fork_point_with_a_ref_and_a_commit() {
     assert_eq!(
         args_of(&c),
         vec!["merge-base", "--fork-point", "main", "feature"]
+    );
+}
+
+#[test]
+fn interpret_trailers_single_trailer() {
+    let mut c = InterpretTrailersCommand::new();
+    c.trailer("Signed-off-by", "A U Thor <author@example.com>")
+        .file("MSG");
+    assert_eq!(
+        args_of(&c),
+        vec![
+            "interpret-trailers",
+            "--trailer",
+            "Signed-off-by: A U Thor <author@example.com>",
+            "MSG"
+        ]
+    );
+}
+
+#[test]
+fn interpret_trailers_placement_and_conflict_actions() {
+    let mut c = InterpretTrailersCommand::new();
+    c.in_place()
+        .trim_empty()
+        .placement(TrailerWhere::Start)
+        .if_exists(TrailerIfExists::Replace)
+        .if_missing(TrailerIfMissing::DoNothing)
+        .trailer_raw("Reviewed-by: R Viewer <r@example.com>")
+        .file("a.txt")
+        .file("b.txt");
+    assert_eq!(
+        args_of(&c),
+        vec![
+            "interpret-trailers",
+            "--in-place",
+            "--trim-empty",
+            "--where=start",
+            "--if-exists=replace",
+            "--if-missing=doNothing",
+            "--trailer",
+            "Reviewed-by: R Viewer <r@example.com>",
+            "a.txt",
+            "b.txt"
+        ]
+    );
+}
+
+#[test]
+fn interpret_trailers_parse_shorthand_and_reading_options() {
+    let mut c = InterpretTrailersCommand::new();
+    c.parse().no_divider().file("MSG");
+    assert_eq!(
+        args_of(&c),
+        vec!["interpret-trailers", "--parse", "--no-divider", "MSG"]
+    );
+
+    let mut spelled_out = InterpretTrailersCommand::new();
+    spelled_out
+        .only_trailers()
+        .only_input()
+        .unfold()
+        .file("MSG");
+    assert_eq!(
+        args_of(&spelled_out),
+        vec![
+            "interpret-trailers",
+            "--only-trailers",
+            "--only-input",
+            "--unfold",
+            "MSG"
+        ]
     );
 }
