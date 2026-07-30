@@ -22,6 +22,7 @@
 //! - [`pull`] — classify `git pull` output into a [`PullResult`]
 //! - [`rebase`] — classify `git rebase` output into a [`RebaseResult`]
 //! - [`reflog`] — parse `git reflog show` output using a fixed format token string
+//! - [`shortlog`] — parse `git shortlog` output into [`shortlog::ShortlogEntry`] entries
 //! - [`show`] — parse `git show` output into a [`show::ShowResult`]
 //! - [`status`] — parse `git status --porcelain=v1 -z` output, with
 //!   [`status::parse_full_status`] additionally covering the `-b` branch header
@@ -40,6 +41,7 @@ pub mod notes;
 pub mod pull;
 pub mod rebase;
 pub mod reflog;
+pub mod shortlog;
 pub mod show;
 pub mod status;
 pub mod submodule;
@@ -60,6 +62,7 @@ pub use notes::parse_notes_list;
 pub use pull::{PullResult, parse_pull};
 pub use rebase::{RebaseResult, parse_rebase};
 pub use reflog::{REFLOG_FORMAT, ReflogEntry, parse_reflog};
+pub use shortlog::{ShortlogEntry, parse_shortlog};
 pub use show::{ShowResult, parse_show};
 pub use status::{Status, StatusEntry, StatusKind, parse_full_status, parse_status};
 pub use submodule::{SubmoduleEntry, SubmoduleStatus, parse_submodule_status};

@@ -103,6 +103,7 @@ pub mod restore;
 pub mod rev_parse;
 pub mod revert;
 pub mod rm;
+pub mod shortlog;
 pub mod show;
 pub mod show_ref;
 pub mod stash;
