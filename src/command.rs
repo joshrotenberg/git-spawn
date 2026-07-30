@@ -78,6 +78,7 @@ pub mod clean;
 pub mod clone;
 pub mod commit;
 pub mod config;
+pub mod count_objects;
 pub mod describe;
 pub mod diff;
 pub mod fetch;
