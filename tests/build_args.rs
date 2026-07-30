@@ -1362,3 +1362,16 @@ fn var_name_and_list_together_build_both_and_are_rejected_at_execute() {
     c.name = Some("GIT_EDITOR".to_string());
     assert_eq!(args_of(&c), vec!["var", "-l", "GIT_EDITOR"]);
 }
+
+#[test]
+fn version_is_a_top_level_flag_not_a_subcommand() {
+    let c = VersionCommand::new();
+    assert_eq!(args_of(&c), vec!["--version"]);
+}
+
+#[test]
+fn version_build_options_follows_the_version_flag() {
+    let mut c = VersionCommand::new();
+    c.build_options();
+    assert_eq!(args_of(&c), vec!["--version", "--build-options"]);
+}

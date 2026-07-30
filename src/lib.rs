@@ -189,7 +189,7 @@ pub use command::{
     status::StatusCommand, submodule::SubmoduleCommand, switch::SwitchCommand,
     symbolic_ref::SymbolicRefCommand, tag::TagCommand, update_ref::UpdateRefCommand,
     var::VarCommand, verify_commit::VerifyCommitCommand, verify_tag::VerifyTagCommand,
-    worktree::WorktreeCommand,
+    version::VersionCommand, worktree::WorktreeCommand,
 };
 pub use error::{Error, Result};
 pub use repo::Repository;
