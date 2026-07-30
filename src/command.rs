@@ -103,6 +103,7 @@ pub mod range_diff;
 pub mod rebase;
 pub mod reflog;
 pub mod remote;
+pub mod rerere;
 pub mod reset;
 pub mod restore;
 pub mod rev_parse;

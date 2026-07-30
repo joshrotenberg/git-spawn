@@ -1128,3 +1128,38 @@ fn bundle_unbundle_with_progress_and_refs() {
         ]
     );
 }
+
+#[test]
+fn rerere_status_and_diff() {
+    assert_eq!(args_of(&RerereCommand::status()), vec!["rerere", "status"]);
+    assert_eq!(args_of(&RerereCommand::diff()), vec!["rerere", "diff"]);
+}
+
+#[test]
+fn rerere_maintenance_actions() {
+    assert_eq!(args_of(&RerereCommand::gc()), vec!["rerere", "gc"]);
+    assert_eq!(args_of(&RerereCommand::clear()), vec!["rerere", "clear"]);
+}
+
+#[test]
+fn rerere_forget_takes_its_pathspec_from_the_constructor() {
+    let c = RerereCommand::forget("README");
+    assert_eq!(args_of(&c), vec!["rerere", "forget", "README"]);
+}
+
+#[test]
+fn rerere_forget_appends_further_pathspecs() {
+    let mut c = RerereCommand::forget("README");
+    c.pathspec("src/lib.rs").pathspec("docs/");
+    assert_eq!(
+        args_of(&c),
+        vec!["rerere", "forget", "README", "src/lib.rs", "docs/"]
+    );
+}
+
+#[test]
+fn rerere_pathspec_is_ignored_by_the_other_actions() {
+    let mut c = RerereCommand::status();
+    c.pathspec("README");
+    assert_eq!(args_of(&c), vec!["rerere", "status"]);
+}
