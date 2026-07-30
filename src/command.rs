@@ -81,6 +81,7 @@ pub mod diff;
 pub mod fetch;
 pub mod for_each_ref;
 pub mod format_patch;
+pub mod fsck;
 pub mod gc;
 pub mod grep;
 pub mod hash_object;
