@@ -894,3 +894,30 @@ fn shortlog_paths_follow_the_separator() {
         vec!["shortlog", "main", "topic", "--", "src", "tests"]
     );
 }
+
+#[test]
+fn gc_bare_is_just_gc() {
+    let c = GcCommand::new();
+    assert_eq!(args_of(&c), vec!["gc"]);
+}
+
+#[test]
+fn gc_aggressive_auto() {
+    let mut c = GcCommand::new();
+    c.aggressive().auto();
+    assert_eq!(args_of(&c), vec!["gc", "--aggressive", "--auto"]);
+}
+
+#[test]
+fn gc_prune_date() {
+    let mut c = GcCommand::new();
+    c.prune("now");
+    assert_eq!(args_of(&c), vec!["gc", "--prune=now"]);
+}
+
+#[test]
+fn gc_no_prune_after_prune_wins() {
+    let mut c = GcCommand::new();
+    c.prune("2.weeks.ago").no_prune();
+    assert_eq!(args_of(&c), vec!["gc", "--no-prune"]);
+}

@@ -176,7 +176,7 @@ pub use command::{
     cherry_pick::CherryPickCommand, clean::CleanCommand, clone::CloneCommand,
     commit::CommitCommand, config::ConfigCommand, describe::DescribeCommand, diff::DiffCommand,
     fetch::FetchCommand, for_each_ref::ForEachRefCommand, format_patch::FormatPatchCommand,
-    grep::GrepCommand, hash_object::HashObjectCommand, init::InitCommand,
+    gc::GcCommand, grep::GrepCommand, hash_object::HashObjectCommand, init::InitCommand,
     interpret_trailers::InterpretTrailersCommand, log::LogCommand, ls_files::LsFilesCommand,
     ls_tree::LsTreeCommand, merge::MergeCommand, merge_base::MergeBaseCommand, mv::MvCommand,
     notes::NotesCommand, pull::PullCommand, push::PushCommand, range_diff::RangeDiffCommand,
