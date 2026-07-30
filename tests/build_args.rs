@@ -1242,3 +1242,59 @@ fn sparse_checkout_options_are_ignored_by_the_actions_they_do_not_apply_to() {
     add.cone().sparse_index();
     assert_eq!(args_of(&add), vec!["sparse-checkout", "add", "src"]);
 }
+
+#[test]
+fn ls_remote_defaults_to_the_configured_remote() {
+    let c = LsRemoteCommand::new();
+    assert_eq!(args_of(&c), vec!["ls-remote"]);
+}
+
+#[test]
+fn ls_remote_named_remote() {
+    let c = LsRemoteCommand::remote("origin");
+    assert_eq!(args_of(&c), vec!["ls-remote", "origin"]);
+}
+
+#[test]
+fn ls_remote_heads_and_tags_with_patterns() {
+    let mut c = LsRemoteCommand::remote("origin");
+    c.heads().tags().refs().pattern("v1.*").pattern("main");
+    assert_eq!(
+        args_of(&c),
+        vec![
+            "ls-remote",
+            "--heads",
+            "--tags",
+            "--refs",
+            "origin",
+            "v1.*",
+            "main"
+        ]
+    );
+}
+
+#[test]
+fn ls_remote_symref_exit_code_and_quiet() {
+    let mut c = LsRemoteCommand::new();
+    c.repository("https://example.com/foo.git")
+        .symref()
+        .exit_code()
+        .quiet();
+    assert_eq!(
+        args_of(&c),
+        vec![
+            "ls-remote",
+            "--symref",
+            "--exit-code",
+            "-q",
+            "https://example.com/foo.git"
+        ]
+    );
+}
+
+#[test]
+fn ls_remote_flags_precede_the_positional_repository() {
+    let mut c = LsRemoteCommand::new();
+    c.pattern("HEAD").repository("origin").heads();
+    assert_eq!(args_of(&c), vec!["ls-remote", "--heads", "origin", "HEAD"]);
+}

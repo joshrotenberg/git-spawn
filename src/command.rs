@@ -91,6 +91,7 @@ pub mod init;
 pub mod interpret_trailers;
 pub mod log;
 pub mod ls_files;
+pub mod ls_remote;
 pub mod ls_tree;
 pub mod maintenance;
 pub mod merge;
