@@ -805,3 +805,27 @@ fn interpret_trailers_parse_shorthand_and_reading_options() {
         ]
     );
 }
+
+#[test]
+fn clean_dry_run_with_directories() {
+    let mut c = CleanCommand::new();
+    c.dry_run().directories();
+    assert_eq!(args_of(&c), vec!["clean", "--dry-run", "-d"]);
+}
+
+#[test]
+fn clean_force_including_ignored_files() {
+    let mut c = CleanCommand::new();
+    c.force().directories().ignored();
+    assert_eq!(args_of(&c), vec!["clean", "--force", "-d", "-x"]);
+}
+
+#[test]
+fn clean_pathspecs_follow_a_separator() {
+    let mut c = CleanCommand::new();
+    c.force().paths(["build", "target"]).path("dist");
+    assert_eq!(
+        args_of(&c),
+        vec!["clean", "--force", "--", "build", "target", "dist"]
+    );
+}
