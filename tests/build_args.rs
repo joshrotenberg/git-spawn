@@ -2,6 +2,7 @@
 //! without spawning `git`.
 
 use git_spawn::command::{
+    archive::ArchiveFormat,
     interpret_trailers::{TrailerIfExists, TrailerIfMissing, TrailerWhere},
     maintenance::{MaintenanceSchedule, MaintenanceTask},
     reset::ResetMode,
@@ -1013,4 +1014,44 @@ fn maintenance_unregister_forced() {
             "/tmp/gitconfig",
         ]
     );
+}
+
+#[test]
+fn archive_bare_is_the_tree_ish_alone() {
+    let c = ArchiveCommand::new("HEAD");
+    assert_eq!(args_of(&c), vec!["archive", "HEAD"]);
+}
+
+#[test]
+fn archive_format_and_prefix_precede_the_tree_ish() {
+    let mut c = ArchiveCommand::new("v1.0");
+    c.format(ArchiveFormat::Zip).prefix("proj/");
+    assert_eq!(
+        args_of(&c),
+        vec!["archive", "--format=zip", "--prefix=proj/", "v1.0"]
+    );
+}
+
+#[test]
+fn archive_output_then_tree_ish_then_paths() {
+    let mut c = ArchiveCommand::new("HEAD");
+    c.output("/tmp/out.tar").path("src").path("README.md");
+    assert_eq!(
+        args_of(&c),
+        vec!["archive", "-o", "/tmp/out.tar", "HEAD", "src", "README.md"]
+    );
+}
+
+#[test]
+fn archive_format_raw_passes_the_name_through() {
+    let mut c = ArchiveCommand::new("HEAD");
+    c.format_raw("tar.zst");
+    assert_eq!(args_of(&c), vec!["archive", "--format=tar.zst", "HEAD"]);
+}
+
+#[test]
+fn archive_format_raw_after_format_wins() {
+    let mut c = ArchiveCommand::new("HEAD");
+    c.format(ArchiveFormat::TarGz).format_raw("zip");
+    assert_eq!(args_of(&c), vec!["archive", "--format=zip", "HEAD"]);
 }

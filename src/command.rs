@@ -65,6 +65,7 @@ use tracing::{debug, error, instrument, trace, warn};
 pub mod add;
 pub mod am;
 pub mod apply;
+pub mod archive;
 pub mod bisect;
 pub mod blame;
 pub mod branch;

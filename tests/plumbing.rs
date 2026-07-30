@@ -1,14 +1,15 @@
 //! Integration tests for plumbing commands and typed parsers.
 
 use git_spawn::{
-    AmCommand, ApplyCommand, BlameCommand, CatFileCommand, CherryCommand, CleanCommand,
-    DescribeCommand, Error, ForEachRefCommand, FormatPatchCommand, FsckCommand, GcCommand,
-    GitCommand, HashObjectCommand, InterpretTrailersCommand, LogCommand, LsFilesCommand,
+    AmCommand, ApplyCommand, ArchiveCommand, BlameCommand, CatFileCommand, CherryCommand,
+    CleanCommand, DescribeCommand, Error, ForEachRefCommand, FormatPatchCommand, FsckCommand,
+    GcCommand, GitCommand, HashObjectCommand, InterpretTrailersCommand, LogCommand, LsFilesCommand,
     LsTreeCommand, MaintenanceCommand, MergeBaseCommand, RangeDiffCommand, Repository,
     RevParseCommand, RevertCommand, ShortlogCommand, ShowRefCommand, SymbolicRefCommand,
     UpdateRefCommand, VerifyCommitCommand, VerifyTagCommand,
 };
 
+use git_spawn::command::archive::ArchiveFormat;
 use git_spawn::command::interpret_trailers::TrailerIfExists;
 use git_spawn::command::maintenance::MaintenanceTask;
 use git_spawn::command::reset::ResetMode;
@@ -1119,6 +1120,50 @@ async fn interpret_trailers_in_place_rewrites_the_file() {
     );
 }
 
+/// Whether `haystack` contains `needle` as a byte substring. Archive entry
+/// names sit in NUL-padded header fields, so a plain substring search is the
+/// way to look for one without decoding the container.
+fn contains_bytes(haystack: &[u8], needle: &str) -> bool {
+    let needle = needle.as_bytes();
+    haystack.windows(needle.len()).any(|w| w == needle)
+}
+
+#[tokio::test]
+async fn archive_writes_a_tar_to_stdout() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let mut cmd = ArchiveCommand::new("HEAD");
+    cmd.current_dir(repo.path()).format(ArchiveFormat::Tar);
+    let out = cmd.execute().await.unwrap();
+
+    let bytes = out.stdout_bytes();
+    assert!(!bytes.is_empty(), "archive should not be empty");
+    // Archiving a commit puts a pax_global_header entry first, so the file's
+    // own header is not at offset 0.
+    assert!(
+        contains_bytes(bytes, "hello.txt"),
+        "tar should name the committed file"
+    );
+}
+
+#[tokio::test]
+async fn archive_output_file_carries_the_prefix() {
+    let (tmp, repo) = make_repo_with_commit().await;
+    let dest = tmp.path().join("out.tar");
+
+    let mut cmd = ArchiveCommand::new("HEAD");
+    cmd.current_dir(repo.path())
+        .format(ArchiveFormat::Tar)
+        .prefix("proj/")
+        .output(&dest);
+    cmd.execute().await.unwrap();
+
+    let bytes = std::fs::read(&dest).unwrap();
+    assert!(
+        contains_bytes(&bytes, "proj/hello.txt"),
+        "--prefix should be prepended to the archived path"
+    );
+}
+
 #[tokio::test]
 async fn clean_dry_run_reports_without_removing() {
     let (_tmp, repo) = make_repo_with_commit().await;
@@ -1418,6 +1463,47 @@ async fn shortlog_pathspecs_limit_the_report() {
 }
 
 #[tokio::test]
+async fn archive_zip_writes_a_zip_file() {
+    let (tmp, repo) = make_repo_with_commit().await;
+    let dest = tmp.path().join("out.zip");
+
+    let mut cmd = ArchiveCommand::new("HEAD");
+    cmd.current_dir(repo.path())
+        .format(ArchiveFormat::Zip)
+        .output(&dest);
+    cmd.execute().await.unwrap();
+
+    let bytes = std::fs::read(&dest).unwrap();
+    assert_eq!(
+        &bytes[..4],
+        b"PK\x03\x04",
+        "expected a zip local file header"
+    );
+    assert!(contains_bytes(&bytes, "hello.txt"));
+}
+
+#[tokio::test]
+async fn archive_path_limits_the_contents() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    std::fs::write(repo.path().join("other.txt"), "other\n").unwrap();
+    repo.add().path("other.txt").execute().await.unwrap();
+    repo.commit().message("second").execute().await.unwrap();
+
+    let mut cmd = ArchiveCommand::new("HEAD");
+    cmd.current_dir(repo.path())
+        .format(ArchiveFormat::Tar)
+        .path("hello.txt");
+    let out = cmd.execute().await.unwrap();
+
+    let bytes = out.stdout_bytes();
+    assert!(contains_bytes(bytes, "hello.txt"));
+    assert!(
+        !contains_bytes(bytes, "other.txt"),
+        "a pathspec should exclude the other file"
+    );
+}
+
+#[tokio::test]
 async fn revert_without_a_commit_is_rejected() {
     let (_tmp, repo) = make_repo_with_commit().await;
     let mut cmd = RevertCommand::new();
@@ -1709,4 +1795,16 @@ async fn maintenance_unregister_needs_force_when_not_registered() {
     let mut cmd = MaintenanceCommand::unregister();
     cmd.current_dir(repo.path()).force().config_file(&config);
     cmd.execute().await.unwrap();
+}
+
+#[tokio::test]
+async fn archive_rejects_an_unknown_format() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let mut cmd = ArchiveCommand::new("HEAD");
+    cmd.current_dir(repo.path()).format_raw("bogus");
+    let err = cmd.execute().await.unwrap_err();
+    assert!(
+        matches!(err, Error::CommandFailed { .. }),
+        "unexpected error: {err:?}"
+    );
 }
