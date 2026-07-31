@@ -1402,3 +1402,30 @@ fn count_objects_verbose_precedes_human_readable_whatever_the_call_order() {
     c.human_readable().verbose();
     assert_eq!(args_of(&c), vec!["count-objects", "-v", "-H"]);
 }
+
+#[test]
+fn check_ignore_paths_follow_a_separator() {
+    let mut c = CheckIgnoreCommand::new();
+    c.paths(["build/", "-generated.log"]);
+    assert_eq!(
+        args_of(&c),
+        vec!["check-ignore", "--", "build/", "-generated.log"]
+    );
+}
+
+#[test]
+fn check_ignore_verbose_non_matching_and_no_index() {
+    let mut c = CheckIgnoreCommand::new();
+    c.path("app.log").verbose().non_matching().no_index();
+    assert_eq!(
+        args_of(&c),
+        vec!["check-ignore", "-v", "-n", "--no-index", "--", "app.log"]
+    );
+}
+
+#[test]
+fn check_ignore_quiet() {
+    let mut c = CheckIgnoreCommand::new();
+    c.path("app.log").quiet();
+    assert_eq!(args_of(&c), vec!["check-ignore", "-q", "--", "app.log"]);
+}
