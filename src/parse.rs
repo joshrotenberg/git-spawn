@@ -14,6 +14,8 @@
 //! - [`cherry`] — parse `git cherry` output into [`cherry::CherryEntry`] entries
 //! - [`cherry_pick`] — classify `git cherry-pick` output into a [`cherry_pick::CherryPickResult`]
 //! - [`commit`] — parse `git commit` output into a [`commit::CommitResult`]
+//! - [`count_objects`] — parse `git count-objects` output into a
+//!   [`count_objects::CountObjects`]
 //! - [`diff`] — parse `git diff --name-status -z`, `--numstat -z`, and `--stat` output
 //! - [`log`] — parse `git log` output using a fixed format token string
 //! - [`ls_remote`] — parse `git ls-remote` output into [`ls_remote::LsRemoteEntry`] entries
@@ -35,6 +37,7 @@ pub mod blame;
 pub mod cherry;
 pub mod cherry_pick;
 pub mod commit;
+pub mod count_objects;
 pub mod diff;
 pub mod log;
 pub mod ls_remote;
@@ -55,6 +58,7 @@ pub use blame::{BlameEntry, parse_blame};
 pub use cherry::{CherryEntry, CherryStatus, parse_cherry};
 pub use cherry_pick::{CherryPickResult, parse_cherry_pick};
 pub use commit::{CommitResult, parse_commit};
+pub use count_objects::{CountObjects, ObjectSize, parse_count_objects, parse_count_objects_terse};
 pub use diff::{
     Diff, DiffEntry, DiffFile, DiffKind, parse_diff_name_status, parse_diff_numstat,
     parse_diff_stat,

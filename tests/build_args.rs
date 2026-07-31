@@ -1375,3 +1375,30 @@ fn version_build_options_follows_the_version_flag() {
     c.build_options();
     assert_eq!(args_of(&c), vec!["--version", "--build-options"]);
 }
+
+#[test]
+fn count_objects_plain() {
+    let c = CountObjectsCommand::new();
+    assert_eq!(args_of(&c), vec!["count-objects"]);
+}
+
+#[test]
+fn count_objects_verbose() {
+    let mut c = CountObjectsCommand::new();
+    c.verbose();
+    assert_eq!(args_of(&c), vec!["count-objects", "-v"]);
+}
+
+#[test]
+fn count_objects_human_readable() {
+    let mut c = CountObjectsCommand::new();
+    c.human_readable();
+    assert_eq!(args_of(&c), vec!["count-objects", "-H"]);
+}
+
+#[test]
+fn count_objects_verbose_precedes_human_readable_whatever_the_call_order() {
+    let mut c = CountObjectsCommand::new();
+    c.human_readable().verbose();
+    assert_eq!(args_of(&c), vec!["count-objects", "-v", "-H"]);
+}

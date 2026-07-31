@@ -2,8 +2,8 @@
 
 use git_spawn::{
     AmCommand, ApplyCommand, ArchiveCommand, BlameCommand, BranchCommand, BundleCommand,
-    CatFileCommand, CherryCommand, CleanCommand, DescribeCommand, Error, ForEachRefCommand,
-    FormatPatchCommand, FsckCommand, GcCommand, GitCommand, HashObjectCommand,
+    CatFileCommand, CherryCommand, CleanCommand, CountObjectsCommand, DescribeCommand, Error,
+    ForEachRefCommand, FormatPatchCommand, FsckCommand, GcCommand, GitCommand, HashObjectCommand,
     InterpretTrailersCommand, LogCommand, LsFilesCommand, LsRemoteCommand, LsTreeCommand,
     MaintenanceCommand, MergeBaseCommand, NameRevCommand, RangeDiffCommand, Repository,
     RerereCommand, RevParseCommand, RevertCommand, ShortlogCommand, ShowRefCommand,
@@ -2627,5 +2627,182 @@ mod version_parser {
         let plain = VersionCommand::new();
         let plain_out = plain.execute().await.unwrap();
         assert_eq!(Some(version), plain.parse_version(&plain_out));
+    }
+}
+
+#[tokio::test]
+async fn count_objects_summarizes_the_loose_objects() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let mut cmd = CountObjectsCommand::new();
+    cmd.current_dir(repo.path());
+    let out = cmd.execute().await.unwrap();
+    let stdout = out.stdout_str();
+    let summary = stdout.trim();
+
+    // A fresh repository's objects are all loose: the commit, its tree, and
+    // the blob.
+    let (objects, size) = summary
+        .split_once(", ")
+        .unwrap_or_else(|| panic!("unexpected summary: {summary:?}"));
+    let objects: u64 = objects
+        .strip_suffix(" objects")
+        .and_then(|n| n.parse().ok())
+        .unwrap_or_else(|| panic!("unexpected object count: {summary:?}"));
+    assert!(
+        objects >= 3,
+        "expected at least 3 loose objects: {summary:?}"
+    );
+    assert!(
+        size.ends_with(" kilobytes"),
+        "expected a kilobyte size: {summary:?}"
+    );
+}
+
+#[tokio::test]
+async fn count_objects_verbose_reports_every_statistic() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let mut cmd = CountObjectsCommand::new();
+    cmd.current_dir(repo.path()).verbose();
+    let out = cmd.execute().await.unwrap();
+    let stdout = out.stdout_str();
+
+    for key in [
+        "count",
+        "size",
+        "in-pack",
+        "packs",
+        "size-pack",
+        "prune-packable",
+        "garbage",
+        "size-garbage",
+    ] {
+        assert!(
+            stdout.lines().any(|l| l.starts_with(&format!("{key}: "))),
+            "missing {key} in: {stdout:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn count_objects_human_readable_renders_the_size_as_text() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let mut cmd = CountObjectsCommand::new();
+    cmd.current_dir(repo.path()).verbose().human_readable();
+    let out = cmd.execute().await.unwrap();
+    let stdout = out.stdout_str();
+
+    // Bare `-v` prints `size: 20`; `-H` renders a unit, and the unit word
+    // differs by magnitude (`0 bytes` for an empty pack, `20.00 KiB` for the
+    // loose objects), so only the presence of a non-numeric size is portable.
+    let size = stdout
+        .lines()
+        .find_map(|l| l.strip_prefix("size: "))
+        .unwrap_or_else(|| panic!("no size line in: {stdout:?}"));
+    assert!(
+        size.parse::<u64>().is_err(),
+        "expected a rendered size, got {size:?}"
+    );
+}
+
+#[cfg(feature = "parse")]
+mod count_objects_parser {
+    use super::*;
+
+    #[tokio::test]
+    async fn parses_the_statistics_of_a_loose_repository() {
+        let (_tmp, repo) = make_repo_with_commit().await;
+        let mut cmd = CountObjectsCommand::new();
+        cmd.current_dir(repo.path()).verbose();
+        let out = cmd.execute().await.unwrap();
+        let stats = cmd
+            .parse_count_objects(&out)
+            .unwrap_or_else(|| panic!("unparsed output: {:?}", out.stdout_str()));
+
+        // Nothing has been packed yet, so every object is loose and the pack
+        // statistics are zero.
+        assert!(stats.count >= 3, "unexpected statistics: {stats:?}");
+        assert!(stats.size.kib.is_some(), "unexpected size: {stats:?}");
+        assert_eq!(stats.in_pack, 0);
+        assert_eq!(stats.packs, 0);
+        assert_eq!(stats.garbage, 0);
+    }
+
+    #[tokio::test]
+    async fn gc_moves_the_loose_objects_into_a_pack() {
+        let (_tmp, repo) = make_repo_with_commit().await;
+        let mut cmd = CountObjectsCommand::new();
+        cmd.current_dir(repo.path()).verbose();
+        let before = cmd
+            .parse_count_objects(&cmd.execute().await.unwrap())
+            .unwrap();
+
+        let mut gc = GcCommand::new();
+        gc.current_dir(repo.path());
+        gc.execute().await.unwrap();
+
+        let after = cmd
+            .parse_count_objects(&cmd.execute().await.unwrap())
+            .unwrap();
+        assert_eq!(after.count, 0, "expected no loose objects left: {after:?}");
+        assert_eq!(after.packs, 1, "expected one pack: {after:?}");
+        assert!(
+            after.in_pack >= before.count,
+            "packed fewer objects than were loose: {before:?} -> {after:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_terse_form_agrees_with_the_verbose_count() {
+        let (_tmp, repo) = make_repo_with_commit().await;
+
+        let mut verbose = CountObjectsCommand::new();
+        verbose.current_dir(repo.path()).verbose();
+        let stats = verbose
+            .parse_count_objects(&verbose.execute().await.unwrap())
+            .unwrap();
+
+        let mut terse = CountObjectsCommand::new();
+        terse.current_dir(repo.path());
+        let out = terse.execute().await.unwrap();
+        let (objects, size) = terse
+            .parse_count_objects_terse(&out)
+            .unwrap_or_else(|| panic!("unparsed output: {:?}", out.stdout_str()));
+
+        assert_eq!(objects, stats.count);
+        assert_eq!(size.kib, stats.size.kib);
+    }
+
+    #[tokio::test]
+    async fn a_human_readable_size_parses_as_text_without_a_number() {
+        let (_tmp, repo) = make_repo_with_commit().await;
+        let mut cmd = CountObjectsCommand::new();
+        cmd.current_dir(repo.path()).verbose().human_readable();
+        let out = cmd.execute().await.unwrap();
+        let stats = cmd
+            .parse_count_objects(&out)
+            .unwrap_or_else(|| panic!("unparsed output: {:?}", out.stdout_str()));
+
+        assert_eq!(stats.size.kib, None, "unexpected size: {stats:?}");
+        assert!(
+            !stats.size.raw.is_empty(),
+            "expected the rendered size text: {stats:?}"
+        );
+        assert!(stats.count >= 3);
+    }
+
+    #[tokio::test]
+    async fn each_form_rejects_the_other_form_s_output() {
+        let (_tmp, repo) = make_repo_with_commit().await;
+
+        let mut verbose = CountObjectsCommand::new();
+        verbose.current_dir(repo.path()).verbose();
+        let verbose_out = verbose.execute().await.unwrap();
+
+        let mut terse = CountObjectsCommand::new();
+        terse.current_dir(repo.path());
+        let terse_out = terse.execute().await.unwrap();
+
+        assert!(verbose.parse_count_objects_terse(&verbose_out).is_none());
+        assert!(terse.parse_count_objects(&terse_out).is_none());
     }
 }
