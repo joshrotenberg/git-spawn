@@ -1347,18 +1347,27 @@ mod tests {
         run(vec!["add", "."]).await;
 
         let pidfile = path.join("grandchild.pid");
-        let pidfile = pidfile.to_string_lossy().replace('\\', "/");
+        let pidfile_arg = pidfile.to_string_lossy().replace('\\', "/");
+        let script = path.join("spawn-and-wait.ps1");
+        let script_arg = script.to_string_lossy().replace('\\', "/");
+        std::fs::write(
+            &script,
+            format!(
+                "$p = Start-Process ping.exe -ArgumentList '-t','127.0.0.1' -PassThru\nSet-Content -LiteralPath '{pidfile_arg}' -Value $p.Id\nWait-Process -Id $p.Id\n"
+            ),
+        )
+        .unwrap();
         std::fs::write(
             hooks_dir.join("pre-commit"),
             format!(
-                "#!/bin/sh\npowershell.exe -NoProfile -NonInteractive -Command '$p = Start-Process ping.exe -ArgumentList \"-t\",\"127.0.0.1\" -PassThru; Set-Content -LiteralPath \"{pidfile}\" -Value $p.Id; Wait-Process -Id $p.Id'\n"
+                "#!/bin/sh\npowershell.exe -NoProfile -NonInteractive -File \"{script_arg}\"\n"
             ),
         )
         .unwrap();
 
         let err = CommandExecutor::new()
             .cwd(path)
-            .timeout(Duration::from_millis(1500))
+            .timeout(Duration::from_secs(5))
             .execute_command(vec!["commit".into(), "-m".into(), "x".into()])
             .await
             .unwrap_err();
@@ -1410,14 +1419,23 @@ mod tests {
 
         let dir = tempfile::tempdir().unwrap();
         let pidfile = dir.path().join("immediate-grandchild.pid");
-        let pidfile = pidfile.to_string_lossy().replace('\\', "/");
+        let pidfile_arg = pidfile.to_string_lossy().replace('\\', "/");
+        let script = dir.path().join("spawn-immediately-and-wait.ps1");
+        let script_arg = script.to_string_lossy().replace('\\', "/");
+        std::fs::write(
+            &script,
+            format!(
+                "$p = Start-Process ping.exe -ArgumentList '-t','127.0.0.1' -PassThru\nSet-Content -LiteralPath '{pidfile_arg}' -Value $p.Id\nWait-Process -Id $p.Id\n"
+            ),
+        )
+        .unwrap();
         let alias = format!(
-            "alias.spawn=!powershell.exe -NoProfile -NonInteractive -Command '$p = Start-Process ping.exe -ArgumentList \"-t\",\"127.0.0.1\" -PassThru; Set-Content -LiteralPath \"{pidfile}\" -Value $p.Id; Wait-Process -Id $p.Id'"
+            "alias.spawn=!powershell.exe -NoProfile -NonInteractive -File \"{script_arg}\""
         );
 
         let mut executor = CommandExecutor::new()
             .cwd(dir.path())
-            .timeout(Duration::from_millis(1500));
+            .timeout(Duration::from_secs(5));
         executor.add_global_args([OsString::from("-c"), OsString::from(alias)]);
         let err = executor
             .execute_command(vec!["spawn".into()])
@@ -1474,11 +1492,20 @@ mod tests {
         let pidfile = dir.path().join("successful-grandchild.pid");
         let stdout = dir.path().join("successful-grandchild.stdout");
         let stderr = dir.path().join("successful-grandchild.stderr");
-        let pidfile = pidfile.to_string_lossy().replace('\\', "/");
-        let stdout = stdout.to_string_lossy().replace('\\', "/");
-        let stderr = stderr.to_string_lossy().replace('\\', "/");
+        let pidfile_arg = pidfile.to_string_lossy().replace('\\', "/");
+        let stdout_arg = stdout.to_string_lossy().replace('\\', "/");
+        let stderr_arg = stderr.to_string_lossy().replace('\\', "/");
+        let script = dir.path().join("spawn-and-exit.ps1");
+        let script_arg = script.to_string_lossy().replace('\\', "/");
+        std::fs::write(
+            &script,
+            format!(
+                "$p = Start-Process ping.exe -ArgumentList '-t','127.0.0.1' -RedirectStandardOutput '{stdout_arg}' -RedirectStandardError '{stderr_arg}' -PassThru\nSet-Content -LiteralPath '{pidfile_arg}' -Value $p.Id\n"
+            ),
+        )
+        .unwrap();
         let alias = format!(
-            "alias.spawn=!powershell.exe -NoProfile -NonInteractive -Command '$p = Start-Process ping.exe -ArgumentList \"-t\",\"127.0.0.1\" -RedirectStandardOutput \"{stdout}\" -RedirectStandardError \"{stderr}\" -PassThru; Set-Content -LiteralPath \"{pidfile}\" -Value $p.Id'"
+            "alias.spawn=!powershell.exe -NoProfile -NonInteractive -File \"{script_arg}\""
         );
 
         let mut executor = CommandExecutor::new()
