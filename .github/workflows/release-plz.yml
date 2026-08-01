@@ -43,8 +43,6 @@ jobs:
         run: |
           set -euo pipefail
           head_branch=$(jq -er '.head_branch' <<<"$RELEASE_PR")
-          pr_number=$(jq -er '.number' <<<"$RELEASE_PR")
-          title=$(gh pr view "$pr_number" --json title --jq .title)
 
           gh workflow run ci.yml --ref "$head_branch"
-          gh workflow run pr-title.yml --ref "$head_branch" -f title="$title"
+          gh workflow run pr-title.yml --ref "$head_branch"

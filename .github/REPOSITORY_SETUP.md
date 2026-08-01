@@ -8,12 +8,17 @@ starting another unattended workflow, so merely updating the release branch
 does not reliably produce merge checks.
 
 After release-plz creates or updates its pull request, the workflow reads the
-action's structured `head_branch` and `number` outputs and explicitly dispatches
-`CI` and `PR Title` at that branch. GitHub treats `workflow_dispatch` as an
+action's structured `head_branch` output and explicitly dispatches `CI` and `PR
+Title` at that branch. GitHub treats `workflow_dispatch` as an
 exception to the recursion guard, and a dispatch at a branch uses that branch's
 latest commit as `GITHUB_SHA`. The resulting `Required checks` and
 `Conventional PR title` results therefore belong to the exact release candidate
 revision without a personal access token or stored GitHub App credential.
+
+The dispatched title check does not trust caller-supplied title text. It resolves
+the sole open pull request for `GITHUB_REF_NAME`, requires that pull request's
+API head to equal `GITHUB_SHA`, and validates the current title returned by
+GitHub.
 
 The workflow needs `actions: write` to create those dispatches. Its remaining
 permissions are unchanged: `contents: write` and `pull-requests: write` allow
