@@ -119,9 +119,8 @@ working directory.
 Accessors cover commands whose behavior depends on a repository or working
 tree. Standalone commands use their direct constructors instead: `VersionCommand`
 inspects the installed Git, `LsRemoteCommand` queries a remote URL, and
-`InterpretTrailersCommand` transforms message text or files. Those commands
-and `CheckRefFormatCommand`, which validates a ref name without accessing a
-repository, can still be given an explicit working directory with
+`CheckRefFormatCommand` validates a ref name without accessing a repository.
+Those commands can still be given an explicit working directory with
 `.current_dir()`.
 
 ### Typed parsers

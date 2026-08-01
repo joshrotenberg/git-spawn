@@ -44,11 +44,11 @@ use crate::command::{
     diff_index::DiffIndexCommand, diff_tree::DiffTreeCommand, fetch::FetchCommand,
     for_each_ref::ForEachRefCommand, format_patch::FormatPatchCommand, fsck::FsckCommand,
     gc::GcCommand, grep::GrepCommand, hash_object::HashObjectCommand, init::InitCommand,
-    log::LogCommand, ls_files::LsFilesCommand, ls_tree::LsTreeCommand,
-    maintenance::MaintenanceCommand, merge::MergeCommand, merge_base::MergeBaseCommand,
-    merge_file::MergeFileCommand, merge_tree::MergeTreeCommand, mktree::MkTreeCommand,
-    mv::MvCommand, name_rev::NameRevCommand, notes::NotesCommand, pull::PullCommand,
-    push::PushCommand, range_diff::RangeDiffCommand, read_tree::ReadTreeCommand,
+    interpret_trailers::InterpretTrailersCommand, log::LogCommand, ls_files::LsFilesCommand,
+    ls_tree::LsTreeCommand, maintenance::MaintenanceCommand, merge::MergeCommand,
+    merge_base::MergeBaseCommand, merge_file::MergeFileCommand, merge_tree::MergeTreeCommand,
+    mktree::MkTreeCommand, mv::MvCommand, name_rev::NameRevCommand, notes::NotesCommand,
+    pull::PullCommand, push::PushCommand, range_diff::RangeDiffCommand, read_tree::ReadTreeCommand,
     rebase::RebaseCommand, reflog::ReflogCommand, remote::RemoteCommand, rerere::RerereCommand,
     reset::ResetCommand, restore::RestoreCommand, rev_list::RevListCommand,
     rev_parse::RevParseCommand, revert::RevertCommand, rm::RmCommand, shortlog::ShortlogCommand,
@@ -523,6 +523,12 @@ impl Repository {
         self.scoped(GcCommand::new())
     }
 
+    /// Build an [`InterpretTrailersCommand`] scoped to this repository.
+    #[must_use]
+    pub fn interpret_trailers(&self) -> InterpretTrailersCommand {
+        self.scoped(InterpretTrailersCommand::new())
+    }
+
     /// Scope a [`MaintenanceCommand`] action to this repository.
     #[must_use]
     pub fn maintenance(&self, action: MaintenanceCommand) -> MaintenanceCommand {
@@ -716,6 +722,7 @@ mod tests {
         assert_scoped!(repo.format_patch(), ["format-patch"]);
         assert_scoped!(repo.fsck(), ["fsck"]);
         assert_scoped!(repo.gc(), ["gc"]);
+        assert_scoped!(repo.interpret_trailers(), ["interpret-trailers"]);
         assert_scoped!(
             repo.maintenance(MaintenanceCommand::run()),
             ["maintenance", "run"]

@@ -42,8 +42,6 @@
 //! available through their direct constructors: [`VersionCommand`](version::VersionCommand)
 //! inspects the installed Git, [`LsRemoteCommand`](ls_remote::LsRemoteCommand)
 //! queries a remote URL, and
-//! [`InterpretTrailersCommand`](interpret_trailers::InterpretTrailersCommand)
-//! transforms message text or files, and
 //! [`CheckRefFormatCommand`](check_ref_format::CheckRefFormatCommand) validates
 //! a ref name without accessing a repository. They intentionally have no
 //! [`Repository`](crate::Repository) accessor; callers can still set an
