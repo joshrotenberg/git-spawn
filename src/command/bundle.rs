@@ -255,6 +255,30 @@ impl GitCommand for BundleCommand {
         args
     }
 
+    fn build_command_os_args(&self) -> Vec<std::ffi::OsString> {
+        let mut args: Vec<_> = self
+            .build_command_args()
+            .into_iter()
+            .map(std::ffi::OsString::from)
+            .collect();
+        let (index, file) = match &self.action {
+            BundleAction::Create {
+                file,
+                progress,
+                version,
+                ..
+            } => (
+                2 + usize::from(progress.is_some()) + usize::from(version.is_some()),
+                file,
+            ),
+            BundleAction::Verify { file, quiet } => (2 + usize::from(*quiet), file),
+            BundleAction::ListHeads { file, .. } => (2, file),
+            BundleAction::Unbundle { file, progress, .. } => (2 + usize::from(*progress), file),
+        };
+        args[index] = file.as_os_str().to_owned();
+        args
+    }
+
     async fn execute(&self) -> Result<CommandOutput> {
         if let BundleAction::Create { revs, all, .. } = &self.action {
             if revs.is_empty() && !*all {

@@ -153,6 +153,18 @@ impl GitCommand for CloneCommand {
         args
     }
 
+    fn build_command_os_args(&self) -> Vec<std::ffi::OsString> {
+        let mut args: Vec<_> = self
+            .build_command_args()
+            .into_iter()
+            .map(std::ffi::OsString::from)
+            .collect();
+        if let Some(directory) = &self.directory {
+            *args.last_mut().expect("clone directory argument") = directory.as_os_str().to_owned();
+        }
+        args
+    }
+
     async fn execute(&self) -> Result<Repository> {
         self.execute_raw().await?;
         let dir = self

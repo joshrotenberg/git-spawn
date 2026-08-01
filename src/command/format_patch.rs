@@ -88,6 +88,19 @@ impl GitCommand for FormatPatchCommand {
         args
     }
 
+    fn build_command_os_args(&self) -> Vec<std::ffi::OsString> {
+        let mut args: Vec<_> = self
+            .build_command_args()
+            .into_iter()
+            .map(std::ffi::OsString::from)
+            .collect();
+        if let Some(directory) = &self.output_dir {
+            let index = 2 + usize::from(self.numbered) + usize::from(self.signoff);
+            args[index] = directory.as_os_str().to_owned();
+        }
+        args
+    }
+
     async fn execute(&self) -> Result<Vec<PathBuf>> {
         if self.rev_spec.is_none() {
             return Err(Error::invalid_config(

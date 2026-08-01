@@ -120,10 +120,41 @@ impl GitCommand for ApplyCommand {
         args
     }
 
+    fn build_command_os_args(&self) -> Vec<std::ffi::OsString> {
+        let mut args: Vec<_> = self
+            .build_command_args()
+            .into_iter()
+            .map(std::ffi::OsString::from)
+            .collect();
+        let offset = args.len() - self.patches.len();
+        for (arg, path) in args[offset..].iter_mut().zip(&self.patches) {
+            *arg = path.as_os_str().to_owned();
+        }
+        args
+    }
+
     async fn execute(&self) -> Result<CommandOutput> {
         if self.patches.is_empty() {
             return Err(Error::invalid_config("apply requires at least one patch"));
         }
         self.execute_raw().await
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::ffi::OsString;
+    use std::os::unix::ffi::{OsStrExt, OsStringExt};
+
+    #[test]
+    fn typed_patch_path_preserves_non_utf8_bytes() {
+        let path = OsString::from_vec(b"patch-\xff.diff".to_vec());
+        let mut command = ApplyCommand::new();
+        command.patch(PathBuf::from(&path));
+
+        let args = command.build_command_os_args();
+
+        assert_eq!(args[1].as_os_str().as_bytes(), path.as_os_str().as_bytes());
     }
 }

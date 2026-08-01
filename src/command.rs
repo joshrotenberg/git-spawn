@@ -155,6 +155,17 @@ pub trait GitCommand {
     /// excluding the leading `git` program.
     fn build_command_args(&self) -> Vec<String>;
 
+    /// Build the argument vector using OS-native values.
+    ///
+    /// The default keeps existing UTF-8 command builders ergonomic. Commands
+    /// with typed [`PathBuf`] fields override this to preserve those paths.
+    fn build_command_os_args(&self) -> Vec<OsString> {
+        self.build_command_args()
+            .into_iter()
+            .map(OsString::from)
+            .collect()
+    }
+
     /// Run the command and decode its output into [`Self::Output`].
     async fn execute(&self) -> Result<Self::Output>;
 
@@ -163,8 +174,8 @@ pub trait GitCommand {
     /// Command implementations call this from `execute()` and then decode
     /// stdout into their typed output.
     async fn execute_raw(&self) -> Result<CommandOutput> {
-        let args = self.build_command_args();
-        self.get_executor().execute_command(args).await
+        let args = self.build_command_os_args();
+        self.get_executor().execute_command_os(args).await
     }
 
     /// Spawn `git` and return its captured output without checking the exit status.
@@ -177,8 +188,8 @@ pub trait GitCommand {
     /// Prefer [`execute`](Self::execute) or [`execute_raw`](Self::execute_raw)
     /// when every non-zero status represents a command failure.
     async fn execute_raw_unchecked(&self) -> Result<CommandOutput> {
-        let args = self.build_command_args();
-        self.get_executor().execute_command_unchecked(args).await
+        let args = self.build_command_os_args();
+        self.get_executor().execute_command_os_unchecked(args).await
     }
 
     /// Append a single raw argument.
@@ -249,7 +260,7 @@ pub trait GitCommand {
 #[derive(Debug, Clone, Default)]
 pub struct CommandExecutor {
     /// Raw arguments appended via the escape hatch.
-    pub raw_args: Vec<String>,
+    pub raw_args: Vec<OsString>,
     /// Working directory for the subprocess.
     pub cwd: Option<PathBuf>,
     /// Extra environment variables.
@@ -297,8 +308,7 @@ impl CommandExecutor {
 
     /// Append a raw argument.
     pub fn add_arg<S: AsRef<OsStr>>(&mut self, arg: S) {
-        self.raw_args
-            .push(arg.as_ref().to_string_lossy().into_owned());
+        self.raw_args.push(arg.as_ref().to_owned());
     }
 
     /// Append several raw arguments.
@@ -321,7 +331,7 @@ impl CommandExecutor {
         } else {
             format!("--{flag}")
         };
-        self.raw_args.push(normalized);
+        self.raw_args.push(normalized.into());
     }
 
     /// Append a `--key value` pair (or `-k value` for single chars).
@@ -333,8 +343,8 @@ impl CommandExecutor {
         } else {
             format!("--{key}")
         };
-        self.raw_args.push(normalized);
-        self.raw_args.push(value.to_string());
+        self.raw_args.push(normalized.into());
+        self.raw_args.push(value.into());
     }
 
     /// Spawn `git` with `args` followed by any raw args, returning captured output.
@@ -349,12 +359,21 @@ impl CommandExecutor {
         )
     )]
     pub async fn execute_command(&self, args: Vec<String>) -> Result<CommandOutput> {
+        self.execute_command_os(args.into_iter().map(OsString::from).collect())
+            .await
+    }
+
+    /// Spawn `git` with OS-native arguments followed by any raw args.
+    ///
+    /// Unlike rendered diagnostics, these values are passed to the operating
+    /// system without Unicode conversion.
+    pub async fn execute_command_os(&self, args: Vec<OsString>) -> Result<CommandOutput> {
         let all_args = self.all_args(args);
         let output = self.execute_command_unchecked_inner(&all_args).await?;
 
         if !output.success {
             return Err(Error::command_failed(
-                format!("git {}", all_args.join(" ")),
+                render_command(&all_args),
                 output.exit_code,
                 String::from_utf8_lossy(&output.stdout).into_owned(),
                 output.stderr,
@@ -381,16 +400,25 @@ impl CommandExecutor {
         )
     )]
     pub async fn execute_command_unchecked(&self, args: Vec<String>) -> Result<CommandOutput> {
+        self.execute_command_os_unchecked(args.into_iter().map(OsString::from).collect())
+            .await
+    }
+
+    /// Spawn `git` with OS-native arguments and return output for any exit status.
+    pub async fn execute_command_os_unchecked(&self, args: Vec<OsString>) -> Result<CommandOutput> {
         let all_args = self.all_args(args);
         self.execute_command_unchecked_inner(&all_args).await
     }
 
-    fn all_args(&self, mut args: Vec<String>) -> Vec<String> {
+    fn all_args(&self, mut args: Vec<OsString>) -> Vec<OsString> {
         args.extend(self.raw_args.iter().cloned());
         args
     }
 
-    async fn execute_command_unchecked_inner(&self, all_args: &[String]) -> Result<CommandOutput> {
+    async fn execute_command_unchecked_inner(
+        &self,
+        all_args: &[OsString],
+    ) -> Result<CommandOutput> {
         trace!(args = ?all_args, "executing git command");
 
         let result = if let Some(t) = self.timeout {
@@ -420,7 +448,7 @@ impl CommandExecutor {
     /// killed the direct child. `kill_on_drop` is a belt-and-suspenders guard:
     /// if the child handle is dropped without an explicit kill, the direct
     /// child is still terminated rather than leaked.
-    fn build_command(&self, all_args: &[String]) -> TokioCommand {
+    fn build_command(&self, all_args: &[OsString]) -> TokioCommand {
         let mut cmd = TokioCommand::new("git");
         cmd.args(all_args)
             .stdout(Stdio::piped())
@@ -460,7 +488,7 @@ impl CommandExecutor {
         }
     }
 
-    async fn execute_internal(&self, all_args: &[String]) -> Result<CommandOutput> {
+    async fn execute_internal(&self, all_args: &[OsString]) -> Result<CommandOutput> {
         if self.stdin.is_none() {
             let output = self
                 .build_command(all_args)
@@ -480,7 +508,7 @@ impl CommandExecutor {
 
     async fn execute_with_timeout(
         &self,
-        all_args: &[String],
+        all_args: &[OsString],
         timeout_duration: Duration,
     ) -> Result<CommandOutput> {
         let child = self
@@ -532,6 +560,15 @@ impl CommandExecutor {
         let ((), output) = tokio::try_join!(write_stdin, child.wait_with_output())?;
         Ok(output)
     }
+}
+
+fn render_command(args: &[OsString]) -> String {
+    let rendered = args
+        .iter()
+        .map(|arg| arg.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("git {rendered}")
 }
 
 /// Map a spawn error to [`Error::GitNotFound`] when the binary is missing,
@@ -661,7 +698,40 @@ mod tests {
         assert_eq!(
             e.raw_args,
             vec!["foo", "a", "b", "--verbose", "-v", "--name", "bar"]
+                .into_iter()
+                .map(OsString::from)
+                .collect::<Vec<_>>()
         );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn raw_argument_preserves_non_utf8_bytes() {
+        use std::os::unix::ffi::{OsStrExt, OsStringExt};
+
+        let dir = tempfile::tempdir().unwrap();
+        let executor = CommandExecutor::new().cwd(dir.path());
+        executor
+            .execute_command(vec!["init".into(), "-q".into()])
+            .await
+            .unwrap();
+        std::fs::write(dir.path().join(".gitignore"), b"*\n").unwrap();
+
+        let filename = OsString::from_vec(b"native-\xff-path".to_vec());
+
+        let mut command = check_ignore::CheckIgnoreCommand::new();
+        command
+            .current_dir(dir.path())
+            .env("GIT_CONFIG_COUNT", "1")
+            .env("GIT_CONFIG_KEY_0", "core.quotePath")
+            .env("GIT_CONFIG_VALUE_0", "false")
+            .arg("--")
+            .arg(&filename);
+        let output = command.execute_raw().await.unwrap();
+
+        let mut expected = filename.as_os_str().as_bytes().to_vec();
+        expected.push(b'\n');
+        assert_eq!(output.stdout_bytes(), expected);
     }
 
     #[test]

@@ -146,6 +146,22 @@ impl GitCommand for AmCommand {
         args
     }
 
+    fn build_command_os_args(&self) -> Vec<std::ffi::OsString> {
+        let mut args: Vec<_> = self
+            .build_command_args()
+            .into_iter()
+            .map(std::ffi::OsString::from)
+            .collect();
+        if self.abort || self.cont || self.skip {
+            return args;
+        }
+        let offset = args.len() - self.mailboxes.len();
+        for (arg, path) in args[offset..].iter_mut().zip(&self.mailboxes) {
+            *arg = path.as_os_str().to_owned();
+        }
+        args
+    }
+
     async fn execute(&self) -> Result<CommandOutput> {
         if self.mailboxes.is_empty() && !self.is_session_control() {
             return Err(Error::invalid_config(

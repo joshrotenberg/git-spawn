@@ -262,6 +262,19 @@ impl GitCommand for InterpretTrailersCommand {
         args
     }
 
+    fn build_command_os_args(&self) -> Vec<std::ffi::OsString> {
+        let mut args: Vec<_> = self
+            .build_command_args()
+            .into_iter()
+            .map(std::ffi::OsString::from)
+            .collect();
+        let offset = args.len() - self.files.len();
+        for (arg, path) in args[offset..].iter_mut().zip(&self.files) {
+            *arg = path.as_os_str().to_owned();
+        }
+        args
+    }
+
     async fn execute(&self) -> Result<CommandOutput> {
         if self.files.is_empty() {
             return Err(Error::invalid_config(

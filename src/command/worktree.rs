@@ -287,6 +287,36 @@ impl GitCommand for WorktreeCommand {
         }
         args
     }
+    fn build_command_os_args(&self) -> Vec<std::ffi::OsString> {
+        let mut args: Vec<_> = self
+            .build_command_args()
+            .into_iter()
+            .map(std::ffi::OsString::from)
+            .collect();
+        match &self.action {
+            WorktreeAction::Add {
+                path, commit_ish, ..
+            } => {
+                let index = args.len() - 1 - usize::from(commit_ish.is_some());
+                args[index] = path.as_os_str().to_owned();
+            }
+            WorktreeAction::Remove { path, .. }
+            | WorktreeAction::Lock { path, .. }
+            | WorktreeAction::Unlock { path } => {
+                *args.last_mut().expect("worktree path argument") = path.as_os_str().to_owned();
+            }
+            WorktreeAction::Move {
+                source,
+                destination,
+            } => {
+                let index = args.len() - 2;
+                args[index] = source.as_os_str().to_owned();
+                args[index + 1] = destination.as_os_str().to_owned();
+            }
+            WorktreeAction::List { .. } | WorktreeAction::Prune { .. } => {}
+        }
+        args
+    }
     async fn execute(&self) -> Result<CommandOutput> {
         self.execute_raw().await
     }

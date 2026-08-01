@@ -4,6 +4,7 @@ use crate::command::{CommandExecutor, GitCommand};
 use crate::error::Result;
 use crate::repo::Repository;
 use async_trait::async_trait;
+use std::ffi::OsString;
 use std::path::PathBuf;
 
 /// Builder for `git init`.
@@ -114,6 +115,36 @@ impl GitCommand for InitCommand {
         }
         if let Some(d) = &self.directory {
             args.push(d.display().to_string());
+        }
+        args
+    }
+
+    fn build_command_os_args(&self) -> Vec<OsString> {
+        let mut args = vec![OsString::from("init")];
+        if self.bare {
+            args.push("--bare".into());
+        }
+        if self.quiet {
+            args.push("--quiet".into());
+        }
+        if let Some(branch) = &self.initial_branch {
+            args.push(format!("--initial-branch={branch}").into());
+        }
+        if let Some(mode) = &self.shared {
+            args.push(format!("--shared={mode}").into());
+        }
+        if let Some(path) = &self.template {
+            let mut arg = OsString::from("--template=");
+            arg.push(path);
+            args.push(arg);
+        }
+        if let Some(path) = &self.separate_git_dir {
+            let mut arg = OsString::from("--separate-git-dir=");
+            arg.push(path);
+            args.push(arg);
+        }
+        if let Some(path) = &self.directory {
+            args.push(path.as_os_str().to_owned());
         }
         args
     }
