@@ -42,6 +42,8 @@
 //! Every command struct implements [`GitCommand`]. That trait provides:
 //!
 //! - [`execute()`](GitCommand::execute) — run the command and decode output
+//! - [`execute_raw_unchecked()`](GitCommand::execute_raw_unchecked) — preserve
+//!   output and status when a documented non-zero exit is ordinary control flow
 //! - [`arg()`](GitCommand::arg) / [`args()`](GitCommand::args) — append raw CLI
 //!   arguments (the universal escape hatch)
 //! - [`current_dir()`](GitCommand::current_dir) — choose the working directory
