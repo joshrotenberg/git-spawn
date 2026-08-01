@@ -34,22 +34,30 @@
 //! ```
 
 use crate::command::{
-    GitCommand, add::AddCommand, bisect::BisectCommand, branch::BranchCommand,
-    cat_file::CatFileCommand, checkout::CheckoutCommand, cherry_pick::CherryPickCommand,
-    clone::CloneCommand, commit::CommitCommand, commit_tree::CommitTreeCommand,
-    config::ConfigCommand, describe::DescribeCommand, diff::DiffCommand,
+    GitCommand, add::AddCommand, am::AmCommand, apply::ApplyCommand, archive::ArchiveCommand,
+    bisect::BisectCommand, blame::BlameCommand, branch::BranchCommand, bundle::BundleCommand,
+    cat_file::CatFileCommand, check_attr::CheckAttrCommand, check_ignore::CheckIgnoreCommand,
+    check_ref_format::CheckRefFormatCommand, checkout::CheckoutCommand, cherry::CherryCommand,
+    cherry_pick::CherryPickCommand, clean::CleanCommand, clone::CloneCommand,
+    commit::CommitCommand, commit_tree::CommitTreeCommand, config::ConfigCommand,
+    count_objects::CountObjectsCommand, describe::DescribeCommand, diff::DiffCommand,
     diff_files::DiffFilesCommand, diff_index::DiffIndexCommand, diff_tree::DiffTreeCommand,
-    fetch::FetchCommand, for_each_ref::ForEachRefCommand, grep::GrepCommand,
-    hash_object::HashObjectCommand, init::InitCommand, log::LogCommand, ls_files::LsFilesCommand,
-    ls_tree::LsTreeCommand, merge::MergeCommand, merge_file::MergeFileCommand,
-    merge_tree::MergeTreeCommand, mktree::MkTreeCommand, mv::MvCommand, notes::NotesCommand,
-    pull::PullCommand, push::PushCommand, read_tree::ReadTreeCommand, rebase::RebaseCommand,
-    reflog::ReflogCommand, remote::RemoteCommand, reset::ResetCommand, restore::RestoreCommand,
-    rev_list::RevListCommand, rev_parse::RevParseCommand, rm::RmCommand, show::ShowCommand,
-    show_ref::ShowRefCommand, stash::StashCommand, status::StatusCommand,
-    submodule::SubmoduleCommand, switch::SwitchCommand, symbolic_ref::SymbolicRefCommand,
-    tag::TagCommand, update_index::UpdateIndexCommand, update_ref::UpdateRefCommand,
-    worktree::WorktreeCommand, write_tree::WriteTreeCommand,
+    fetch::FetchCommand, for_each_ref::ForEachRefCommand, format_patch::FormatPatchCommand,
+    fsck::FsckCommand, gc::GcCommand, grep::GrepCommand, hash_object::HashObjectCommand,
+    init::InitCommand, interpret_trailers::InterpretTrailersCommand, log::LogCommand,
+    ls_files::LsFilesCommand, ls_remote::LsRemoteCommand, ls_tree::LsTreeCommand,
+    maintenance::MaintenanceCommand, merge::MergeCommand, merge_base::MergeBaseCommand,
+    merge_file::MergeFileCommand, merge_tree::MergeTreeCommand, mktree::MkTreeCommand,
+    mv::MvCommand, name_rev::NameRevCommand, notes::NotesCommand, pull::PullCommand,
+    push::PushCommand, range_diff::RangeDiffCommand, read_tree::ReadTreeCommand,
+    rebase::RebaseCommand, reflog::ReflogCommand, remote::RemoteCommand, rerere::RerereCommand,
+    reset::ResetCommand, restore::RestoreCommand, rev_list::RevListCommand,
+    rev_parse::RevParseCommand, revert::RevertCommand, rm::RmCommand, shortlog::ShortlogCommand,
+    show::ShowCommand, show_ref::ShowRefCommand, sparse_checkout::SparseCheckoutCommand,
+    stash::StashCommand, status::StatusCommand, submodule::SubmoduleCommand, switch::SwitchCommand,
+    symbolic_ref::SymbolicRefCommand, tag::TagCommand, update_index::UpdateIndexCommand,
+    update_ref::UpdateRefCommand, var::VarCommand, verify_commit::VerifyCommitCommand,
+    verify_tag::VerifyTagCommand, worktree::WorktreeCommand, write_tree::WriteTreeCommand,
 };
 use crate::error::{Error, Result};
 use std::path::{Path, PathBuf};
@@ -439,6 +447,173 @@ impl Repository {
         c
     }
 
+    /// Build an [`AmCommand`] scoped to this repository.
+    #[must_use]
+    pub fn am(&self) -> AmCommand {
+        self.scoped(AmCommand::new())
+    }
+
+    /// Build an [`ApplyCommand`] scoped to this repository.
+    #[must_use]
+    pub fn apply(&self) -> ApplyCommand {
+        self.scoped(ApplyCommand::new())
+    }
+
+    /// Build a [`CheckAttrCommand`] scoped to this repository.
+    #[must_use]
+    pub fn check_attr(&self) -> CheckAttrCommand {
+        self.scoped(CheckAttrCommand::new())
+    }
+
+    /// Build a [`CheckIgnoreCommand`] scoped to this repository.
+    #[must_use]
+    pub fn check_ignore(&self) -> CheckIgnoreCommand {
+        self.scoped(CheckIgnoreCommand::new())
+    }
+
+    /// Build an [`ArchiveCommand`] for `tree_ish`, scoped to this repository.
+    pub fn archive(&self, tree_ish: impl Into<String>) -> ArchiveCommand {
+        self.scoped(ArchiveCommand::new(tree_ish))
+    }
+
+    /// Build a [`BlameCommand`] scoped to this repository.
+    #[must_use]
+    pub fn blame(&self) -> BlameCommand {
+        self.scoped(BlameCommand::new())
+    }
+
+    /// Scope a [`BundleCommand`] action to this repository.
+    #[must_use]
+    pub fn bundle(&self, action: BundleCommand) -> BundleCommand {
+        self.scoped(action)
+    }
+
+    /// Build a [`CherryCommand`] scoped to this repository.
+    #[must_use]
+    pub fn cherry(&self) -> CherryCommand {
+        self.scoped(CherryCommand::new())
+    }
+
+    /// Build a [`CleanCommand`] scoped to this repository.
+    #[must_use]
+    pub fn clean(&self) -> CleanCommand {
+        self.scoped(CleanCommand::new())
+    }
+
+    /// Build a [`CountObjectsCommand`] scoped to this repository.
+    #[must_use]
+    pub fn count_objects(&self) -> CountObjectsCommand {
+        self.scoped(CountObjectsCommand::new())
+    }
+
+    /// Build a [`FormatPatchCommand`] scoped to this repository.
+    #[must_use]
+    pub fn format_patch(&self) -> FormatPatchCommand {
+        self.scoped(FormatPatchCommand::new())
+    }
+
+    /// Build an [`FsckCommand`] scoped to this repository.
+    #[must_use]
+    pub fn fsck(&self) -> FsckCommand {
+        self.scoped(FsckCommand::new())
+    }
+
+    /// Build a [`GcCommand`] scoped to this repository.
+    #[must_use]
+    pub fn gc(&self) -> GcCommand {
+        self.scoped(GcCommand::new())
+    }
+
+    /// Build an [`InterpretTrailersCommand`] scoped to this repository.
+    #[must_use]
+    pub fn interpret_trailers(&self) -> InterpretTrailersCommand {
+        self.scoped(InterpretTrailersCommand::new())
+    }
+
+    /// Build an [`LsRemoteCommand`] scoped to this repository.
+    ///
+    /// The default command reads the current branch's configured remote. Use
+    /// [`LsRemoteCommand::remote`] directly for a standalone URL or path.
+    #[must_use]
+    pub fn ls_remote(&self) -> LsRemoteCommand {
+        self.scoped(LsRemoteCommand::new())
+    }
+
+    /// Scope a [`CheckRefFormatCommand`] to this repository.
+    ///
+    /// Full ref-name validation is standalone, but branch mode can expand
+    /// reflog syntax such as `@{-1}` against the scoped repository.
+    #[must_use]
+    pub fn check_ref_format(&self, command: CheckRefFormatCommand) -> CheckRefFormatCommand {
+        self.scoped(command)
+    }
+
+    /// Scope a [`MaintenanceCommand`] action to this repository.
+    #[must_use]
+    pub fn maintenance(&self, action: MaintenanceCommand) -> MaintenanceCommand {
+        self.scoped(action)
+    }
+
+    /// Build a [`MergeBaseCommand`] scoped to this repository.
+    #[must_use]
+    pub fn merge_base(&self) -> MergeBaseCommand {
+        self.scoped(MergeBaseCommand::new())
+    }
+
+    /// Build a [`NameRevCommand`] scoped to this repository.
+    #[must_use]
+    pub fn name_rev(&self) -> NameRevCommand {
+        self.scoped(NameRevCommand::new())
+    }
+
+    /// Build a [`RangeDiffCommand`] scoped to this repository.
+    #[must_use]
+    pub fn range_diff(&self) -> RangeDiffCommand {
+        self.scoped(RangeDiffCommand::new())
+    }
+
+    /// Scope a [`RerereCommand`] action to this repository.
+    #[must_use]
+    pub fn rerere(&self, action: RerereCommand) -> RerereCommand {
+        self.scoped(action)
+    }
+
+    /// Build a [`RevertCommand`] scoped to this repository.
+    #[must_use]
+    pub fn revert(&self) -> RevertCommand {
+        self.scoped(RevertCommand::new())
+    }
+
+    /// Build a [`ShortlogCommand`] scoped to this repository.
+    #[must_use]
+    pub fn shortlog(&self) -> ShortlogCommand {
+        self.scoped(ShortlogCommand::new())
+    }
+
+    /// Scope a [`SparseCheckoutCommand`] action to this repository.
+    #[must_use]
+    pub fn sparse_checkout(&self, action: SparseCheckoutCommand) -> SparseCheckoutCommand {
+        self.scoped(action)
+    }
+
+    /// Scope a [`VarCommand`] action to this repository.
+    #[must_use]
+    pub fn var(&self, action: VarCommand) -> VarCommand {
+        self.scoped(action)
+    }
+
+    /// Build a [`VerifyCommitCommand`] scoped to this repository.
+    #[must_use]
+    pub fn verify_commit(&self) -> VerifyCommitCommand {
+        self.scoped(VerifyCommitCommand::new())
+    }
+
+    /// Build a [`VerifyTagCommand`] scoped to this repository.
+    #[must_use]
+    pub fn verify_tag(&self) -> VerifyTagCommand {
+        self.scoped(VerifyTagCommand::new())
+    }
+
     /// Build a [`RevListCommand`] scoped to this repository.
     #[must_use]
     pub fn rev_list(&self) -> RevListCommand {
@@ -535,5 +710,62 @@ mod tests {
 
         let update = repo.update_ref();
         assert_eq!(update.get_executor().cwd, want);
+    }
+
+    #[test]
+    fn added_repository_accessors_scope_current_dir_and_build_expected_argv() {
+        let repo = Repository::new_unchecked("/tmp/some-repo");
+        let want = Some(PathBuf::from("/tmp/some-repo"));
+
+        macro_rules! assert_scoped {
+            ($command:expr, [$($arg:expr),* $(,)?]) => {{
+                let command = $command;
+                assert_eq!(command.get_executor().cwd, want);
+                assert_eq!(command.build_command_args(), vec![$($arg),*]);
+            }};
+        }
+
+        assert_scoped!(repo.am(), ["am"]);
+        assert_scoped!(repo.apply(), ["apply"]);
+        assert_scoped!(repo.check_attr(), ["check-attr"]);
+        assert_scoped!(repo.check_ignore(), ["check-ignore"]);
+        assert_scoped!(repo.archive("HEAD"), ["archive", "HEAD"]);
+        assert_scoped!(repo.blame(), ["blame"]);
+        assert_scoped!(
+            repo.bundle(BundleCommand::create("repo.bundle")),
+            ["bundle", "create", "repo.bundle"]
+        );
+        assert_scoped!(repo.cherry(), ["cherry"]);
+        assert_scoped!(repo.clean(), ["clean"]);
+        assert_scoped!(repo.count_objects(), ["count-objects"]);
+        assert_scoped!(repo.format_patch(), ["format-patch"]);
+        assert_scoped!(repo.fsck(), ["fsck"]);
+        assert_scoped!(repo.gc(), ["gc"]);
+        assert_scoped!(repo.interpret_trailers(), ["interpret-trailers"]);
+        assert_scoped!(repo.ls_remote(), ["ls-remote"]);
+        assert_scoped!(
+            repo.check_ref_format(CheckRefFormatCommand::branch("@{-1}")),
+            ["check-ref-format", "--branch", "@{-1}"]
+        );
+        assert_scoped!(
+            repo.maintenance(MaintenanceCommand::run()),
+            ["maintenance", "run"]
+        );
+        assert_scoped!(repo.merge_base(), ["merge-base"]);
+        assert_scoped!(repo.name_rev(), ["name-rev"]);
+        assert_scoped!(repo.range_diff(), ["range-diff"]);
+        assert_scoped!(repo.rerere(RerereCommand::status()), ["rerere", "status"]);
+        assert_scoped!(repo.revert(), ["revert"]);
+        assert_scoped!(repo.shortlog(), ["shortlog"]);
+        assert_scoped!(
+            repo.sparse_checkout(SparseCheckoutCommand::list()),
+            ["sparse-checkout", "list"]
+        );
+        assert_scoped!(
+            repo.var(VarCommand::get("GIT_EDITOR")),
+            ["var", "GIT_EDITOR"]
+        );
+        assert_scoped!(repo.verify_commit(), ["verify-commit"]);
+        assert_scoped!(repo.verify_tag(), ["verify-tag"]);
     }
 }

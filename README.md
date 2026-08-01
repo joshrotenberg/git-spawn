@@ -116,6 +116,15 @@ async fn demo() -> git_spawn::Result<()> {
 `.commit()`, `.log()`, ...) return commands pre-scoped to the repo's
 working directory.
 
+Accessors cover commands whose behavior depends on a repository or working
+tree. Standalone commands use their direct constructors instead:
+`VersionCommand` inspects the installed Git. Hybrid commands support both
+forms: `repo.ls_remote()` reads configured remotes from that repository, while
+`LsRemoteCommand::remote(...)` can query a standalone URL or path directly.
+Similarly, full ref-name validation is standalone, while
+`repo.check_ref_format(CheckRefFormatCommand::branch(...))` scopes branch-mode
+reflog expansion such as `@{-1}`.
+
 ### Typed parsers
 
 ```rust
