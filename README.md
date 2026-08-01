@@ -137,6 +137,29 @@ The `parse` feature (on by default) also provides `parse_log` (paired with
 `LOG_FORMAT`) and `parse_diff_name_status`. Enable the `serde` feature to get
 `Serialize` / `Deserialize` on the parsed types.
 
+### Checked and unchecked execution
+
+`execute()` and `execute_raw()` are checked: any nonzero git exit becomes
+`Error::CommandFailed`. Use `execute_raw_unchecked()` only when a git command
+documents a nonzero status as ordinary control flow. It returns the captured
+stdout, stderr, and exact exit status for every normally completed process;
+spawn, I/O, and timeout failures remain errors.
+
+```rust,no_run
+use git_spawn::{GitCommand, Repository};
+
+async fn has_changes() -> git_spawn::Result<bool> {
+    let repo = Repository::open("/path/to/repo")?;
+    let output = repo
+        .diff()
+        .args(["--quiet", "--exit-code"])
+        .execute_raw_unchecked()
+        .await?;
+
+    Ok(output.exit_code == 1)
+}
+```
+
 ### Workflow helpers (opt-in)
 
 Enable the `workflow` feature for one-call repo state, typed listings, and

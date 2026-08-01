@@ -4,6 +4,8 @@
 //! The trait gives each command:
 //!
 //! - [`execute()`](GitCommand::execute) — run and return a typed output
+//! - [`execute_raw_unchecked()`](GitCommand::execute_raw_unchecked) — return
+//!   captured output even when git exits non-zero
 //! - [`arg()`](GitCommand::arg) / [`args()`](GitCommand::args) — append raw
 //!   CLI arguments (escape hatch)
 //! - [`with_timeout()`](GitCommand::with_timeout) — cap execution time
@@ -13,7 +15,7 @@
 //!
 //! Under the hood, each command delegates to a shared [`CommandExecutor`] that
 //! spawns `git` via [`tokio::process::Command`], captures stdout/stderr, and
-//! maps non-zero exits to [`Error::CommandFailed`].
+//! maps non-zero exits to [`Error::CommandFailed`] by default.
 //!
 //! # The two-tier output model
 //!
@@ -163,6 +165,20 @@ pub trait GitCommand {
     async fn execute_raw(&self) -> Result<CommandOutput> {
         let args = self.build_command_args();
         self.get_executor().execute_command(args).await
+    }
+
+    /// Spawn `git` and return its captured output without checking the exit status.
+    ///
+    /// Use this escape hatch for git plumbing whose documented non-zero statuses
+    /// are ordinary control flow, such as `git diff --quiet --exit-code`. A
+    /// normally completed process returns [`CommandOutput`] for every exit
+    /// status. Spawn, I/O, and timeout failures are still returned as errors.
+    ///
+    /// Prefer [`execute`](Self::execute) or [`execute_raw`](Self::execute_raw)
+    /// when every non-zero status represents a command failure.
+    async fn execute_raw_unchecked(&self) -> Result<CommandOutput> {
+        let args = self.build_command_args();
+        self.get_executor().execute_command_unchecked(args).await
     }
 
     /// Append a single raw argument.
@@ -333,15 +349,54 @@ impl CommandExecutor {
         )
     )]
     pub async fn execute_command(&self, args: Vec<String>) -> Result<CommandOutput> {
-        let mut all_args = args;
-        all_args.extend(self.raw_args.iter().cloned());
+        let all_args = self.all_args(args);
+        let output = self.execute_command_unchecked_inner(&all_args).await?;
 
+        if !output.success {
+            return Err(Error::command_failed(
+                format!("git {}", all_args.join(" ")),
+                output.exit_code,
+                String::from_utf8_lossy(&output.stdout).into_owned(),
+                output.stderr,
+            ));
+        }
+
+        Ok(output)
+    }
+
+    /// Spawn `git` with `args` followed by any raw args, returning captured
+    /// output regardless of the process's exit status.
+    ///
+    /// This is intended for git plumbing that assigns meaning to non-zero exit
+    /// statuses. A process that starts and completes normally always yields a
+    /// [`CommandOutput`]; inspect [`CommandOutput::exit_code`] or
+    /// [`CommandOutput::success`] to classify it. Spawn, I/O, and timeout
+    /// failures remain errors.
+    #[instrument(
+        name = "git.command.unchecked",
+        skip(self, args),
+        fields(
+            cwd = self.cwd.as_ref().map(|p| p.display().to_string()),
+            timeout_secs = self.timeout.map(|t| t.as_secs()),
+        )
+    )]
+    pub async fn execute_command_unchecked(&self, args: Vec<String>) -> Result<CommandOutput> {
+        let all_args = self.all_args(args);
+        self.execute_command_unchecked_inner(&all_args).await
+    }
+
+    fn all_args(&self, mut args: Vec<String>) -> Vec<String> {
+        args.extend(self.raw_args.iter().cloned());
+        args
+    }
+
+    async fn execute_command_unchecked_inner(&self, all_args: &[String]) -> Result<CommandOutput> {
         trace!(args = ?all_args, "executing git command");
 
         let result = if let Some(t) = self.timeout {
-            self.execute_with_timeout(&all_args, t).await
+            self.execute_with_timeout(all_args, t).await
         } else {
-            self.execute_internal(&all_args).await
+            self.execute_internal(all_args).await
         };
 
         match &result {
@@ -390,29 +445,19 @@ impl CommandExecutor {
         cmd
     }
 
-    /// Decode a finished process into [`CommandOutput`], mapping non-zero
-    /// exits to [`Error::CommandFailed`].
-    fn finish(&self, all_args: &[String], output: std::process::Output) -> Result<CommandOutput> {
+    /// Decode a normally finished process into [`CommandOutput`].
+    fn finish(output: std::process::Output) -> CommandOutput {
         let stdout = output.stdout;
         let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
         let exit_code = output.status.code().unwrap_or(-1);
         let success = output.status.success();
 
-        if !success {
-            return Err(Error::command_failed(
-                format!("git {}", all_args.join(" ")),
-                exit_code,
-                String::from_utf8_lossy(&stdout).into_owned(),
-                stderr,
-            ));
-        }
-
-        Ok(CommandOutput {
+        CommandOutput {
             stdout,
             stderr,
             exit_code,
             success,
-        })
+        }
     }
 
     async fn execute_internal(&self, all_args: &[String]) -> Result<CommandOutput> {
@@ -422,7 +467,7 @@ impl CommandExecutor {
                 .output()
                 .await
                 .map_err(map_spawn_error)?;
-            return self.finish(all_args, output);
+            return Ok(Self::finish(output));
         }
 
         let child = self
@@ -430,7 +475,7 @@ impl CommandExecutor {
             .spawn()
             .map_err(map_spawn_error)?;
         let output = self.wait_with_output(child).await.map_err(map_wait_error)?;
-        self.finish(all_args, output)
+        Ok(Self::finish(output))
     }
 
     async fn execute_with_timeout(
@@ -448,7 +493,7 @@ impl CommandExecutor {
         let pid = child.id();
 
         match tokio::time::timeout(timeout_duration, self.wait_with_output(child)).await {
-            Ok(Ok(output)) => self.finish(all_args, output),
+            Ok(Ok(output)) => Ok(Self::finish(output)),
             Ok(Err(e)) => Err(map_wait_error(e)),
             Err(_) => {
                 // The `wait_with_output` future has been dropped, so the direct
@@ -644,6 +689,65 @@ mod tests {
         assert_eq!(o.stdout_lines(), vec!["a", "b"]);
         assert_eq!(o.stdout_trimmed(), "a\nb");
         assert_eq!(o.stdout_bytes(), b"a\nb\n");
+    }
+
+    #[tokio::test]
+    async fn unchecked_preserves_nonzero_output_while_checked_rejects_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let executor = CommandExecutor::new().cwd(dir.path());
+
+        executor
+            .execute_command(vec!["init".into(), "-q".into()])
+            .await
+            .unwrap();
+        std::fs::write(dir.path().join("empty"), b"").unwrap();
+        std::fs::write(dir.path().join("untracked"), b"contents").unwrap();
+
+        let args = vec![
+            "diff".into(),
+            "--quiet".into(),
+            "--exit-code".into(),
+            "--no-index".into(),
+            "empty".into(),
+            "untracked".into(),
+        ];
+        let output = executor
+            .execute_command_unchecked(args.clone())
+            .await
+            .unwrap();
+        assert_eq!(output.exit_code, 1);
+        assert!(!output.success);
+
+        let error = executor.execute_command(args).await.unwrap_err();
+        assert!(
+            matches!(error, Error::CommandFailed { exit_code: 1, .. }),
+            "expected status 1 to remain checked, got {error:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn git_command_unchecked_escape_hatch_preserves_nonzero_status() {
+        let dir = tempfile::tempdir().unwrap();
+        CommandExecutor::new()
+            .cwd(dir.path())
+            .execute_command(vec!["init".into(), "-q".into()])
+            .await
+            .unwrap();
+        std::fs::write(dir.path().join("empty"), b"").unwrap();
+        std::fs::write(dir.path().join("changed"), b"contents").unwrap();
+
+        let mut command = diff::DiffCommand::new();
+        command.current_dir(dir.path()).args([
+            "--quiet",
+            "--exit-code",
+            "--no-index",
+            "empty",
+            "changed",
+        ]);
+        let output = command.execute_raw_unchecked().await.unwrap();
+
+        assert_eq!(output.exit_code, 1);
+        assert!(!output.success);
     }
 
     /// A timeout must reap the grandchildren git spawned, not just the direct
