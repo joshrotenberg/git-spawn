@@ -445,6 +445,12 @@ fn cat_file_pretty_print() {
 }
 
 #[test]
+fn cat_file_type_checked() {
+    let c = CatFileCommand::type_checked("commit", "HEAD");
+    assert_eq!(args_of(&c), vec!["cat-file", "commit", "HEAD"]);
+}
+
+#[test]
 fn hash_object_write() {
     let mut c = HashObjectCommand::new();
     c.write().path("/tmp/blob");
