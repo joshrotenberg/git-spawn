@@ -2,13 +2,13 @@
 
 use git_spawn::{
     AmCommand, ApplyCommand, ArchiveCommand, BlameCommand, BranchCommand, BundleCommand,
-    CatFileCommand, CherryCommand, CleanCommand, CountObjectsCommand, DescribeCommand, Error,
-    ForEachRefCommand, FormatPatchCommand, FsckCommand, GcCommand, GitCommand, HashObjectCommand,
-    InterpretTrailersCommand, LogCommand, LsFilesCommand, LsRemoteCommand, LsTreeCommand,
-    MaintenanceCommand, MergeBaseCommand, NameRevCommand, RangeDiffCommand, Repository,
-    RerereCommand, RevParseCommand, RevertCommand, ShortlogCommand, ShowRefCommand,
-    SparseCheckoutCommand, SymbolicRefCommand, UpdateRefCommand, VarCommand, VerifyCommitCommand,
-    VerifyTagCommand, VersionCommand,
+    CatFileCommand, CheckIgnoreCommand, CherryCommand, CleanCommand, CountObjectsCommand,
+    DescribeCommand, Error, ForEachRefCommand, FormatPatchCommand, FsckCommand, GcCommand,
+    GitCommand, HashObjectCommand, InterpretTrailersCommand, LogCommand, LsFilesCommand,
+    LsRemoteCommand, LsTreeCommand, MaintenanceCommand, MergeBaseCommand, NameRevCommand,
+    RangeDiffCommand, Repository, RerereCommand, RevParseCommand, RevertCommand, ShortlogCommand,
+    ShowRefCommand, SparseCheckoutCommand, SymbolicRefCommand, UpdateRefCommand, VarCommand,
+    VerifyCommitCommand, VerifyTagCommand, VersionCommand,
 };
 
 use git_spawn::command::archive::ArchiveFormat;
@@ -24,6 +24,15 @@ async fn make_repo_with_commit() -> (tempfile::TempDir, Repository) {
     std::fs::write(repo.path().join("hello.txt"), "hi\n").unwrap();
     repo.add().path("hello.txt").execute().await.unwrap();
     repo.commit().message("init").execute().await.unwrap();
+    (tmp, repo)
+}
+
+async fn make_repo_with_ignore_rules() -> (tempfile::TempDir, Repository) {
+    let (tmp, repo) = make_repo_with_commit().await;
+    std::fs::write(repo.path().join(".gitignore"), "*.log\nbuild/\n").unwrap();
+    std::fs::write(repo.path().join("app.log"), "log\n").unwrap();
+    std::fs::write(repo.path().join("main.rs"), "fn main() {}\n").unwrap();
+    std::fs::create_dir(repo.path().join("build")).unwrap();
     (tmp, repo)
 }
 
@@ -2804,5 +2813,113 @@ mod count_objects_parser {
 
         assert!(verbose.parse_count_objects_terse(&verbose_out).is_none());
         assert!(terse.parse_count_objects(&terse_out).is_none());
+    }
+}
+
+#[tokio::test]
+async fn check_ignore_reports_only_ignored_paths() {
+    let (_tmp, repo) = make_repo_with_ignore_rules().await;
+    let mut cmd = CheckIgnoreCommand::new();
+    cmd.current_dir(repo.path())
+        .paths(["app.log", "build/", "main.rs"]);
+
+    let out = cmd.execute().await.unwrap();
+    assert_eq!(out.stdout_lines(), ["app.log", "build/"]);
+}
+
+#[tokio::test]
+async fn check_ignore_no_match_can_be_treated_as_an_empty_result() {
+    let (_tmp, repo) = make_repo_with_ignore_rules().await;
+    let mut cmd = CheckIgnoreCommand::new();
+    cmd.current_dir(repo.path()).path("main.rs");
+
+    assert!(
+        matches!(
+            cmd.execute().await,
+            Err(Error::CommandFailed { exit_code: 1, .. })
+        ),
+        "the standard executor should preserve git's exit status"
+    );
+    assert!(cmd.execute_allow_no_match().await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn check_ignore_verbose_non_matching_reports_rules_and_misses() {
+    let (_tmp, repo) = make_repo_with_ignore_rules().await;
+    let mut cmd = CheckIgnoreCommand::new();
+    cmd.current_dir(repo.path())
+        .paths(["app.log", "main.rs"])
+        .verbose()
+        .non_matching();
+
+    let out = cmd.execute().await.unwrap();
+    let stdout = out.stdout_str();
+    assert!(
+        stdout
+            .lines()
+            .any(|line| line.ends_with(":1:*.log\tapp.log")),
+        "missing matching rule: {stdout:?}"
+    );
+    assert!(
+        stdout.lines().any(|line| line == "::\tmain.rs"),
+        "missing non-matching record: {stdout:?}"
+    );
+}
+
+#[tokio::test]
+async fn check_ignore_no_index_reports_a_tracked_ignored_path() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    std::fs::write(repo.path().join("tracked.log"), "tracked\n").unwrap();
+    repo.add().path("tracked.log").execute().await.unwrap();
+    repo.commit().message("track log").execute().await.unwrap();
+    std::fs::write(repo.path().join(".gitignore"), "*.log\n").unwrap();
+
+    let mut indexed = CheckIgnoreCommand::new();
+    indexed.current_dir(repo.path()).path("tracked.log");
+    assert!(indexed.execute_allow_no_match().await.unwrap().is_none());
+
+    let mut all = CheckIgnoreCommand::new();
+    all.current_dir(repo.path()).path("tracked.log").no_index();
+    let out = all.execute().await.unwrap();
+    assert_eq!(out.stdout_trimmed(), "tracked.log");
+}
+
+#[tokio::test]
+async fn check_ignore_quiet_uses_the_exit_status_without_output() {
+    let (_tmp, repo) = make_repo_with_ignore_rules().await;
+
+    let mut matched = CheckIgnoreCommand::new();
+    matched.current_dir(repo.path()).path("app.log").quiet();
+    let out = matched.execute_allow_no_match().await.unwrap().unwrap();
+    assert!(out.stdout_bytes().is_empty());
+
+    let mut unmatched = CheckIgnoreCommand::new();
+    unmatched.current_dir(repo.path()).path("main.rs").quiet();
+    assert!(unmatched.execute_allow_no_match().await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn check_ignore_rejects_invalid_option_shapes_before_spawning() {
+    let mut missing_path = CheckIgnoreCommand::new();
+
+    let mut non_matching = CheckIgnoreCommand::new();
+    non_matching.path("app.log").non_matching();
+
+    let mut quiet_verbose = CheckIgnoreCommand::new();
+    quiet_verbose.path("app.log").quiet().verbose();
+
+    let mut quiet_many = CheckIgnoreCommand::new();
+    quiet_many.paths(["app.log", "other.log"]).quiet();
+
+    for command in [
+        &mut missing_path,
+        &mut non_matching,
+        &mut quiet_verbose,
+        &mut quiet_many,
+    ] {
+        assert!(
+            matches!(command.execute().await, Err(Error::InvalidConfig { .. })),
+            "expected invalid config for {command:?}"
+        );
     }
 }
