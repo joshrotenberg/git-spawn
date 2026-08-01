@@ -81,10 +81,9 @@ impl TrailerIfMissing {
 /// Builder for `git interpret-trailers`.
 ///
 /// Adds trailers such as `Signed-off-by` to a commit message, or reads the
-/// trailers already in one. Messages are passed as file paths: reading a
-/// message from stdin is not modelled, so [`execute`](GitCommand::execute)
-/// rejects an empty file list rather than handing git a command that would
-/// block on the parent's stdin.
+/// trailers already in one. This typed builder accepts messages as file paths
+/// and rejects an empty file list. The shared [`CommandExecutor`] can pipe
+/// bytes through [`CommandExecutor::stdin_bytes`] for lower-level use.
 ///
 /// By default git writes the resulting message to stdout; [`in_place`](Self::in_place)
 /// rewrites the input file instead.

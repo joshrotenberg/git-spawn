@@ -14,8 +14,7 @@ pub struct HashObjectCommand {
     pub paths: Vec<PathBuf>,
     /// `-w`: also write the object into the object database.
     pub write: bool,
-    /// `--stdin`: read from stdin. (Currently unsupported in this wrapper; use
-    /// `path()` on a file containing the desired bytes.)
+    /// `--stdin`: read bytes configured by [`stdin`](Self::stdin).
     pub stdin: bool,
     /// `-t <type>`: override the object type.
     pub object_type: Option<String>,
@@ -37,6 +36,13 @@ impl HashObjectCommand {
     /// Also write the resulting object into `.git/objects`.
     pub fn write(&mut self) -> &mut Self {
         self.write = true;
+        self
+    }
+
+    /// Hash exact bytes supplied through stdin.
+    pub fn stdin(&mut self, bytes: impl Into<Vec<u8>>) -> &mut Self {
+        self.stdin = true;
+        self.executor.stdin = Some(bytes.into());
         self
     }
 
