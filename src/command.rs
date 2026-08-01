@@ -8,6 +8,8 @@
 //!   captured output even when git exits non-zero
 //! - [`arg()`](GitCommand::arg) / [`args()`](GitCommand::args) — append raw
 //!   CLI arguments (escape hatch)
+//! - [`global_arg()`](GitCommand::global_arg) /
+//!   [`global_args()`](GitCommand::global_args) — prepend Git-global arguments
 //! - [`with_timeout()`](GitCommand::with_timeout) — cap execution time
 //! - [`current_dir()`](GitCommand::current_dir) / [`env()`](GitCommand::env) —
 //!   control the subprocess environment
@@ -39,9 +41,11 @@
 //!
 //! # Escape hatches
 //!
-//! Every command supports [`arg`](GitCommand::arg), [`args`](GitCommand::args),
-//! [`flag`](GitCommand::flag), and [`option`](GitCommand::option). Raw args are
-//! appended **after** the command's typed flags, so they compose naturally:
+//! Every command supports [`global_arg`](GitCommand::global_arg),
+//! [`global_args`](GitCommand::global_args), [`arg`](GitCommand::arg),
+//! [`args`](GitCommand::args), [`flag`](GitCommand::flag), and
+//! [`option`](GitCommand::option). Git-global args are prepended **before** the
+//! subcommand, while raw args are appended **after** its typed flags:
 //!
 //! ```no_run
 //! # async fn ex() -> git_spawn::Result<()> {
@@ -208,6 +212,25 @@ pub trait GitCommand {
         self
     }
 
+    /// Prepend a single raw Git-global argument before the subcommand.
+    ///
+    /// Separate values, such as the value for `-C`, must be added separately
+    /// so their ordering and OS-native representation are preserved.
+    fn global_arg<S: AsRef<OsStr>>(&mut self, arg: S) -> &mut Self {
+        self.get_executor_mut().add_global_arg(arg);
+        self
+    }
+
+    /// Prepend several raw Git-global arguments before the subcommand.
+    fn global_args<I, S>(&mut self, args: I) -> &mut Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        self.get_executor_mut().add_global_args(args);
+        self
+    }
+
     /// Append a `--flag` (or `-f` if a single character).
     fn flag(&mut self, flag: &str) -> &mut Self {
         self.get_executor_mut().add_flag(flag);
@@ -259,6 +282,8 @@ pub trait GitCommand {
 /// Shared machinery used by every [`GitCommand`] to spawn `git`.
 #[derive(Debug, Clone, Default)]
 pub struct CommandExecutor {
+    /// Ordered Git-global arguments inserted before the typed subcommand.
+    pub global_args: Vec<OsString>,
     /// Raw arguments appended via the escape hatch.
     pub raw_args: Vec<OsString>,
     /// Working directory for the subprocess.
@@ -322,6 +347,22 @@ impl CommandExecutor {
         }
     }
 
+    /// Add a Git-global argument before the typed subcommand.
+    pub fn add_global_arg<S: AsRef<OsStr>>(&mut self, arg: S) {
+        self.global_args.push(arg.as_ref().to_owned());
+    }
+
+    /// Add several ordered Git-global arguments before the typed subcommand.
+    pub fn add_global_args<I, S>(&mut self, args: I)
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        for arg in args {
+            self.add_global_arg(arg);
+        }
+    }
+
     /// Append a flag, normalizing to `-x` for single chars and `--word` otherwise.
     pub fn add_flag(&mut self, flag: &str) {
         let normalized = if flag.starts_with('-') {
@@ -347,7 +388,7 @@ impl CommandExecutor {
         self.raw_args.push(value.into());
     }
 
-    /// Spawn `git` with `args` followed by any raw args, returning captured output.
+    /// Spawn `git` with global args, `args`, then trailing raw args.
     ///
     /// Non-zero exit codes become [`Error::CommandFailed`].
     #[instrument(
@@ -363,7 +404,7 @@ impl CommandExecutor {
             .await
     }
 
-    /// Spawn `git` with OS-native arguments followed by any raw args.
+    /// Spawn `git` with OS-native global args, typed args, then raw args.
     ///
     /// Unlike rendered diagnostics, these values are passed to the operating
     /// system without Unicode conversion.
@@ -410,9 +451,13 @@ impl CommandExecutor {
         self.execute_command_unchecked_inner(&all_args).await
     }
 
-    fn all_args(&self, mut args: Vec<OsString>) -> Vec<OsString> {
-        args.extend(self.raw_args.iter().cloned());
-        args
+    fn all_args(&self, args: Vec<OsString>) -> Vec<OsString> {
+        self.global_args
+            .iter()
+            .cloned()
+            .chain(args)
+            .chain(self.raw_args.iter().cloned())
+            .collect()
     }
 
     async fn execute_command_unchecked_inner(
@@ -690,11 +735,20 @@ mod tests {
     #[test]
     fn executor_args() {
         let mut e = CommandExecutor::new();
+        e.add_global_arg("--no-optional-locks");
+        e.add_global_args(["-C", "/repo"]);
         e.add_arg("foo");
         e.add_args(["a", "b"]);
         e.add_flag("verbose");
         e.add_flag("v");
         e.add_option("name", "bar");
+        assert_eq!(
+            e.global_args,
+            vec!["--no-optional-locks", "-C", "/repo"]
+                .into_iter()
+                .map(OsString::from)
+                .collect::<Vec<_>>()
+        );
         assert_eq!(
             e.raw_args,
             vec!["foo", "a", "b", "--verbose", "-v", "--name", "bar"]
@@ -702,6 +756,65 @@ mod tests {
                 .map(OsString::from)
                 .collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn executor_orders_global_typed_and_trailing_args() {
+        let mut executor = CommandExecutor::new();
+        executor.add_global_args(["--no-optional-locks", "-C", "/repo"]);
+        executor.add_args(["--porcelain=v2", "--untracked-files=no"]);
+
+        assert_eq!(
+            executor.all_args(vec!["status".into(), "--short".into()]),
+            [
+                "--no-optional-locks",
+                "-C",
+                "/repo",
+                "status",
+                "--short",
+                "--porcelain=v2",
+                "--untracked-files=no",
+            ]
+            .into_iter()
+            .map(OsString::from)
+            .collect::<Vec<_>>()
+        );
+    }
+
+    #[tokio::test]
+    async fn invocation_local_config_precedes_subcommand_without_persisting() {
+        let key = "git-spawn.issue130-test";
+        let mut command = config::ConfigCommand::get(key);
+        command.global_args(["-c", "git-spawn.issue130-test=invocation-only"]);
+
+        let output = command.execute().await.unwrap();
+        assert_eq!(output.stdout_trimmed(), "invocation-only");
+
+        let output = CommandExecutor::new()
+            .execute_command_unchecked(vec!["config".into(), "--get".into(), key.into()])
+            .await
+            .unwrap();
+        assert!(!output.success, "invocation-local config must not persist");
+    }
+
+    #[tokio::test]
+    async fn no_optional_locks_and_dash_c_precede_subcommand() {
+        let dir = tempfile::tempdir().unwrap();
+        CommandExecutor::new()
+            .cwd(dir.path())
+            .execute_command(vec!["init".into(), "-q".into()])
+            .await
+            .unwrap();
+
+        let mut command = status::StatusCommand::new();
+        command
+            .global_arg("--no-optional-locks")
+            .global_args([OsString::from("-C"), dir.path().as_os_str().to_owned()])
+            .arg("--porcelain=v2");
+        let output = command.execute().await.unwrap();
+
+        assert!(output.success);
+        assert!(output.stdout_bytes().is_empty());
     }
 
     #[cfg(unix)]
@@ -732,6 +845,19 @@ mod tests {
         let mut expected = filename.as_os_str().as_bytes().to_vec();
         expected.push(b'\n');
         assert_eq!(output.stdout_bytes(), expected);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn global_argument_preserves_non_utf8_bytes() {
+        use std::os::unix::ffi::{OsStrExt, OsStringExt};
+
+        let native_path = OsString::from_vec(b"native-\xff-repo".to_vec());
+        let mut executor = CommandExecutor::new();
+        executor.add_global_args([OsString::from("-C"), native_path]);
+
+        let args = executor.all_args(vec!["status".into()]);
+        assert_eq!(args[1].as_os_str().as_bytes(), b"native-\xff-repo");
     }
 
     #[test]

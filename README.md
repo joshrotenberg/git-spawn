@@ -201,8 +201,9 @@ for the full surface.
 
 ### Escape hatches
 
-Every command supports `.arg`, `.args`, `.flag`, and `.option` for flags that
-don't yet have a typed builder method:
+Every command supports `.global_arg` and `.global_args` for Git-global options
+that must precede the subcommand. The existing `.arg`, `.args`, `.flag`, and
+`.option` methods append arguments after the typed subcommand arguments:
 
 ```rust
 use git_spawn::{GitCommand, Repository};
@@ -214,6 +215,23 @@ async fn shortstat() -> git_spawn::Result<()> {
     println!("{}", out.stdout_str());
     Ok(())
 }
+```
+
+For example, invocation-local configuration and a repository path can be
+provided without changing the process working directory or persistent config:
+
+```rust,no_run
+use git_spawn::{GitCommand, StatusCommand};
+
+# async fn status() -> git_spawn::Result<()> {
+let mut command = StatusCommand::new();
+let out = command
+    .global_args(["-c", "core.hooksPath=/dev/null"])
+    .global_args(["--no-optional-locks", "-C", "/repo"])
+    .execute()
+    .await?;
+# Ok(())
+# }
 ```
 
 ### Timeouts, env, working dir
