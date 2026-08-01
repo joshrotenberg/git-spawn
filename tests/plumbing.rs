@@ -2,13 +2,14 @@
 
 use git_spawn::{
     AmCommand, ApplyCommand, ArchiveCommand, BlameCommand, BranchCommand, BundleCommand,
-    CatFileCommand, CheckIgnoreCommand, CherryCommand, CleanCommand, CountObjectsCommand,
-    DescribeCommand, Error, ForEachRefCommand, FormatPatchCommand, FsckCommand, GcCommand,
-    GitCommand, HashObjectCommand, InterpretTrailersCommand, LogCommand, LsFilesCommand,
-    LsRemoteCommand, LsTreeCommand, MaintenanceCommand, MergeBaseCommand, NameRevCommand,
-    RangeDiffCommand, Repository, RerereCommand, RevParseCommand, RevertCommand, ShortlogCommand,
-    ShowRefCommand, SparseCheckoutCommand, SymbolicRefCommand, UpdateRefCommand, VarCommand,
-    VerifyCommitCommand, VerifyTagCommand, VersionCommand,
+    CatFileCommand, CheckAttrCommand, CheckIgnoreCommand, CheckRefFormatCommand, CherryCommand,
+    CleanCommand, CountObjectsCommand, DescribeCommand, Error, ForEachRefCommand,
+    FormatPatchCommand, FsckCommand, GcCommand, GitCommand, HashObjectCommand,
+    InterpretTrailersCommand, LogCommand, LsFilesCommand, LsRemoteCommand, LsTreeCommand,
+    MaintenanceCommand, MergeBaseCommand, NameRevCommand, RangeDiffCommand, Repository,
+    RerereCommand, RevParseCommand, RevertCommand, ShortlogCommand, ShowRefCommand,
+    SparseCheckoutCommand, SymbolicRefCommand, UpdateRefCommand, VarCommand, VerifyCommitCommand,
+    VerifyTagCommand, VersionCommand,
 };
 
 use git_spawn::command::archive::ArchiveFormat;
@@ -2950,4 +2951,103 @@ async fn check_ignore_rejects_invalid_option_shapes_before_spawning() {
             "expected invalid config for {command:?}"
         );
     }
+}
+
+#[tokio::test]
+async fn check_attr_reports_set_unset_and_unspecified_values() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    std::fs::write(repo.path().join(".gitattributes"), "*.txt text -diff\n").unwrap();
+
+    let mut cmd = CheckAttrCommand::new();
+    cmd.current_dir(repo.path())
+        .attributes(["text", "diff", "export-ignore"])
+        .path("hello.txt");
+    assert_eq!(
+        cmd.execute().await.unwrap().stdout_lines(),
+        [
+            "hello.txt: text: set",
+            "hello.txt: diff: unset",
+            "hello.txt: export-ignore: unspecified",
+        ]
+    );
+}
+
+#[tokio::test]
+async fn check_attr_all_reports_only_attributes_that_are_present() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    std::fs::write(repo.path().join(".gitattributes"), "*.txt text -diff\n").unwrap();
+
+    let mut cmd = CheckAttrCommand::new();
+    cmd.current_dir(repo.path()).all().path("hello.txt");
+    let lines = cmd.execute().await.unwrap().stdout_lines();
+    assert!(lines.iter().any(|line| line == "hello.txt: text: set"));
+    assert!(lines.iter().any(|line| line == "hello.txt: diff: unset"));
+}
+
+#[tokio::test]
+async fn check_attr_rejects_missing_or_conflicting_selection() {
+    let mut missing_path = CheckAttrCommand::new();
+    missing_path.attribute("text");
+    let mut missing_attribute = CheckAttrCommand::new();
+    missing_attribute.path("README.md");
+    let mut both = CheckAttrCommand::new();
+    both.attribute("text").all().path("README.md");
+
+    for command in [&mut missing_path, &mut missing_attribute, &mut both] {
+        assert!(matches!(
+            command.execute().await,
+            Err(Error::InvalidConfig { .. })
+        ));
+    }
+}
+
+#[tokio::test]
+async fn check_ref_format_validates_refs_and_branches() {
+    assert!(
+        CheckRefFormatCommand::new("refs/heads/topic")
+            .is_valid()
+            .await
+            .unwrap()
+    );
+    assert!(
+        !CheckRefFormatCommand::new("refs/heads/bad..name")
+            .is_valid()
+            .await
+            .unwrap()
+    );
+    assert!(
+        CheckRefFormatCommand::branch("topic")
+            .is_valid()
+            .await
+            .unwrap()
+    );
+    assert!(
+        !CheckRefFormatCommand::branch("-topic")
+            .is_valid()
+            .await
+            .unwrap()
+    );
+}
+
+#[tokio::test]
+async fn check_ref_format_normalizes_and_returns_the_ref() {
+    let mut cmd = CheckRefFormatCommand::new("//refs//heads/topic");
+    cmd.normalize();
+    assert_eq!(cmd.execute().await.unwrap(), "refs/heads/topic");
+}
+
+#[tokio::test]
+async fn check_ref_format_rejects_invalid_builder_shapes() {
+    let empty = CheckRefFormatCommand::new("");
+    assert!(matches!(
+        empty.execute().await,
+        Err(Error::InvalidConfig { .. })
+    ));
+
+    let mut branch = CheckRefFormatCommand::branch("topic");
+    branch.normalize();
+    assert!(matches!(
+        branch.execute().await,
+        Err(Error::InvalidConfig { .. })
+    ));
 }
