@@ -119,10 +119,14 @@ pub mod cherry_pick;
 pub mod clean;
 pub mod clone;
 pub mod commit;
+pub mod commit_tree;
 pub mod config;
 pub mod count_objects;
 pub mod describe;
 pub mod diff;
+pub mod diff_files;
+pub mod diff_index;
+pub mod diff_tree;
 pub mod fetch;
 pub mod for_each_ref;
 pub mod format_patch;
@@ -139,18 +143,23 @@ pub mod ls_tree;
 pub mod maintenance;
 pub mod merge;
 pub mod merge_base;
+pub mod merge_file;
+pub mod merge_tree;
+pub mod mktree;
 pub mod mv;
 pub mod name_rev;
 pub mod notes;
 pub mod pull;
 pub mod push;
 pub mod range_diff;
+pub mod read_tree;
 pub mod rebase;
 pub mod reflog;
 pub mod remote;
 pub mod rerere;
 pub mod reset;
 pub mod restore;
+pub mod rev_list;
 pub mod rev_parse;
 pub mod revert;
 pub mod rm;
@@ -164,12 +173,14 @@ pub mod submodule;
 pub mod switch;
 pub mod symbolic_ref;
 pub mod tag;
+pub mod update_index;
 pub mod update_ref;
 pub mod var;
 pub mod verify_commit;
 pub mod verify_tag;
 pub mod version;
 pub mod worktree;
+pub mod write_tree;
 
 /// Default timeout applied when none is configured on the executor.
 ///
@@ -442,10 +453,34 @@ impl CommandExecutor {
     /// Unlike rendered diagnostics, these values are passed to the operating
     /// system without Unicode conversion.
     pub async fn execute_command_os(&self, args: Vec<OsString>) -> Result<CommandOutput> {
+        self.execute_command_os_allowing(args, &[0]).await
+    }
+
+    /// Execute a command while treating the listed exit codes as expected.
+    pub(crate) async fn execute_command_os_allowing(
+        &self,
+        args: Vec<OsString>,
+        allowed_exit_codes: &[i32],
+    ) -> Result<CommandOutput> {
+        self.execute_command_os_checked_by(args, |output| {
+            allowed_exit_codes.contains(&output.exit_code)
+        })
+        .await
+    }
+
+    /// Execute a command and classify its output with a command-specific rule.
+    pub(crate) async fn execute_command_os_checked_by<F>(
+        &self,
+        args: Vec<OsString>,
+        is_expected: F,
+    ) -> Result<CommandOutput>
+    where
+        F: FnOnce(&CommandOutput) -> bool,
+    {
         let all_args = self.all_args(args);
         let output = self.execute_command_unchecked_inner(&all_args).await?;
 
-        if !output.success {
+        if !is_expected(&output) {
             return Err(Error::command_failed(
                 render_command(&all_args),
                 output.exit_code,

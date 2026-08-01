@@ -36,16 +36,20 @@
 use crate::command::{
     GitCommand, add::AddCommand, bisect::BisectCommand, branch::BranchCommand,
     cat_file::CatFileCommand, checkout::CheckoutCommand, cherry_pick::CherryPickCommand,
-    clone::CloneCommand, commit::CommitCommand, config::ConfigCommand, describe::DescribeCommand,
-    diff::DiffCommand, fetch::FetchCommand, for_each_ref::ForEachRefCommand, grep::GrepCommand,
+    clone::CloneCommand, commit::CommitCommand, commit_tree::CommitTreeCommand,
+    config::ConfigCommand, describe::DescribeCommand, diff::DiffCommand,
+    diff_files::DiffFilesCommand, diff_index::DiffIndexCommand, diff_tree::DiffTreeCommand,
+    fetch::FetchCommand, for_each_ref::ForEachRefCommand, grep::GrepCommand,
     hash_object::HashObjectCommand, init::InitCommand, log::LogCommand, ls_files::LsFilesCommand,
-    ls_tree::LsTreeCommand, merge::MergeCommand, mv::MvCommand, notes::NotesCommand,
-    pull::PullCommand, push::PushCommand, rebase::RebaseCommand, reflog::ReflogCommand,
-    remote::RemoteCommand, reset::ResetCommand, restore::RestoreCommand,
-    rev_parse::RevParseCommand, rm::RmCommand, show::ShowCommand, show_ref::ShowRefCommand,
-    stash::StashCommand, status::StatusCommand, submodule::SubmoduleCommand, switch::SwitchCommand,
-    symbolic_ref::SymbolicRefCommand, tag::TagCommand, update_ref::UpdateRefCommand,
-    worktree::WorktreeCommand,
+    ls_tree::LsTreeCommand, merge::MergeCommand, merge_file::MergeFileCommand,
+    merge_tree::MergeTreeCommand, mktree::MkTreeCommand, mv::MvCommand, notes::NotesCommand,
+    pull::PullCommand, push::PushCommand, read_tree::ReadTreeCommand, rebase::RebaseCommand,
+    reflog::ReflogCommand, remote::RemoteCommand, reset::ResetCommand, restore::RestoreCommand,
+    rev_list::RevListCommand, rev_parse::RevParseCommand, rm::RmCommand, show::ShowCommand,
+    show_ref::ShowRefCommand, stash::StashCommand, status::StatusCommand,
+    submodule::SubmoduleCommand, switch::SwitchCommand, symbolic_ref::SymbolicRefCommand,
+    tag::TagCommand, update_index::UpdateIndexCommand, update_ref::UpdateRefCommand,
+    worktree::WorktreeCommand, write_tree::WriteTreeCommand,
 };
 use crate::error::{Error, Result};
 use std::path::{Path, PathBuf};
@@ -433,6 +437,67 @@ impl Repository {
         let mut c = UpdateRefCommand::new();
         c.current_dir(&self.path);
         c
+    }
+
+    /// Build a [`RevListCommand`] scoped to this repository.
+    #[must_use]
+    pub fn rev_list(&self) -> RevListCommand {
+        self.scoped(RevListCommand::new())
+    }
+    /// Build a [`CommitTreeCommand`] scoped to this repository.
+    #[must_use]
+    pub fn commit_tree(&self) -> CommitTreeCommand {
+        self.scoped(CommitTreeCommand::new())
+    }
+    /// Build a [`WriteTreeCommand`] scoped to this repository.
+    #[must_use]
+    pub fn write_tree(&self) -> WriteTreeCommand {
+        self.scoped(WriteTreeCommand::new())
+    }
+    /// Build a [`ReadTreeCommand`] scoped to this repository.
+    #[must_use]
+    pub fn read_tree(&self) -> ReadTreeCommand {
+        self.scoped(ReadTreeCommand::new())
+    }
+    /// Build an [`UpdateIndexCommand`] scoped to this repository.
+    #[must_use]
+    pub fn update_index(&self) -> UpdateIndexCommand {
+        self.scoped(UpdateIndexCommand::new())
+    }
+    /// Build an [`MkTreeCommand`] scoped to this repository.
+    #[must_use]
+    pub fn mktree(&self) -> MkTreeCommand {
+        self.scoped(MkTreeCommand::new())
+    }
+    /// Build a [`MergeTreeCommand`] scoped to this repository.
+    #[must_use]
+    pub fn merge_tree(&self) -> MergeTreeCommand {
+        self.scoped(MergeTreeCommand::new())
+    }
+    /// Build a [`MergeFileCommand`] scoped to this repository.
+    #[must_use]
+    pub fn merge_file(&self) -> MergeFileCommand {
+        self.scoped(MergeFileCommand::new())
+    }
+    /// Build a [`DiffTreeCommand`] scoped to this repository.
+    #[must_use]
+    pub fn diff_tree(&self) -> DiffTreeCommand {
+        self.scoped(DiffTreeCommand::new())
+    }
+    /// Build a [`DiffIndexCommand`] scoped to this repository.
+    #[must_use]
+    pub fn diff_index(&self) -> DiffIndexCommand {
+        self.scoped(DiffIndexCommand::new())
+    }
+    /// Build a [`DiffFilesCommand`] scoped to this repository.
+    #[must_use]
+    pub fn diff_files(&self) -> DiffFilesCommand {
+        self.scoped(DiffFilesCommand::new())
+    }
+
+    fn scoped<C: GitCommand>(&self, mut command: C) -> C {
+        command.current_dir(&self.path);
+        command
     }
 }
 

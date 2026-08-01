@@ -171,28 +171,33 @@ pub mod tags;
 #[cfg_attr(docsrs, doc(cfg(feature = "workflow")))]
 pub mod workflow;
 
+pub use command::merge_tree::MergeTreeResult;
 pub use command::{
     CommandExecutor, CommandOutput, GitCommand, add::AddCommand, am::AmCommand,
     apply::ApplyCommand, archive::ArchiveCommand, bisect::BisectCommand, blame::BlameCommand,
     branch::BranchCommand, bundle::BundleCommand, cat_file::CatFileCommand,
     check_ignore::CheckIgnoreCommand, checkout::CheckoutCommand, cherry::CherryCommand,
     cherry_pick::CherryPickCommand, clean::CleanCommand, clone::CloneCommand,
-    commit::CommitCommand, config::ConfigCommand, count_objects::CountObjectsCommand,
-    describe::DescribeCommand, diff::DiffCommand, fetch::FetchCommand,
-    for_each_ref::ForEachRefCommand, format_patch::FormatPatchCommand, fsck::FsckCommand,
-    gc::GcCommand, grep::GrepCommand, hash_object::HashObjectCommand, init::InitCommand,
-    interpret_trailers::InterpretTrailersCommand, log::LogCommand, ls_files::LsFilesCommand,
-    ls_remote::LsRemoteCommand, ls_tree::LsTreeCommand, maintenance::MaintenanceCommand,
-    merge::MergeCommand, merge_base::MergeBaseCommand, mv::MvCommand, name_rev::NameRevCommand,
-    notes::NotesCommand, pull::PullCommand, push::PushCommand, range_diff::RangeDiffCommand,
+    commit::CommitCommand, commit_tree::CommitTreeCommand, config::ConfigCommand,
+    count_objects::CountObjectsCommand, describe::DescribeCommand, diff::DiffCommand,
+    diff_files::DiffFilesCommand, diff_index::DiffIndexCommand, diff_tree::DiffTreeCommand,
+    fetch::FetchCommand, for_each_ref::ForEachRefCommand, format_patch::FormatPatchCommand,
+    fsck::FsckCommand, gc::GcCommand, grep::GrepCommand, hash_object::HashObjectCommand,
+    init::InitCommand, interpret_trailers::InterpretTrailersCommand, log::LogCommand,
+    ls_files::LsFilesCommand, ls_remote::LsRemoteCommand, ls_tree::LsTreeCommand,
+    maintenance::MaintenanceCommand, merge::MergeCommand, merge_base::MergeBaseCommand,
+    merge_file::MergeFileCommand, merge_tree::MergeTreeCommand, mktree::MkTreeCommand,
+    mv::MvCommand, name_rev::NameRevCommand, notes::NotesCommand, pull::PullCommand,
+    push::PushCommand, range_diff::RangeDiffCommand, read_tree::ReadTreeCommand,
     rebase::RebaseCommand, reflog::ReflogCommand, remote::RemoteCommand, rerere::RerereCommand,
-    reset::ResetCommand, restore::RestoreCommand, rev_parse::RevParseCommand,
-    revert::RevertCommand, rm::RmCommand, shortlog::ShortlogCommand, show::ShowCommand,
-    show_ref::ShowRefCommand, sparse_checkout::SparseCheckoutCommand, stash::StashCommand,
-    status::StatusCommand, submodule::SubmoduleCommand, switch::SwitchCommand,
-    symbolic_ref::SymbolicRefCommand, tag::TagCommand, update_ref::UpdateRefCommand,
-    var::VarCommand, verify_commit::VerifyCommitCommand, verify_tag::VerifyTagCommand,
-    version::VersionCommand, worktree::WorktreeCommand,
+    reset::ResetCommand, restore::RestoreCommand, rev_list::RevListCommand,
+    rev_parse::RevParseCommand, revert::RevertCommand, rm::RmCommand, shortlog::ShortlogCommand,
+    show::ShowCommand, show_ref::ShowRefCommand, sparse_checkout::SparseCheckoutCommand,
+    stash::StashCommand, status::StatusCommand, submodule::SubmoduleCommand, switch::SwitchCommand,
+    symbolic_ref::SymbolicRefCommand, tag::TagCommand, update_index::UpdateIndexCommand,
+    update_ref::UpdateRefCommand, var::VarCommand, verify_commit::VerifyCommitCommand,
+    verify_tag::VerifyTagCommand, version::VersionCommand, worktree::WorktreeCommand,
+    write_tree::WriteTreeCommand,
 };
 pub use error::{Error, Result};
 pub use repo::Repository;
