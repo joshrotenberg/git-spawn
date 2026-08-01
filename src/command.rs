@@ -453,10 +453,34 @@ impl CommandExecutor {
     /// Unlike rendered diagnostics, these values are passed to the operating
     /// system without Unicode conversion.
     pub async fn execute_command_os(&self, args: Vec<OsString>) -> Result<CommandOutput> {
+        self.execute_command_os_allowing(args, &[0]).await
+    }
+
+    /// Execute a command while treating the listed exit codes as expected.
+    pub(crate) async fn execute_command_os_allowing(
+        &self,
+        args: Vec<OsString>,
+        allowed_exit_codes: &[i32],
+    ) -> Result<CommandOutput> {
+        self.execute_command_os_checked_by(args, |output| {
+            allowed_exit_codes.contains(&output.exit_code)
+        })
+        .await
+    }
+
+    /// Execute a command and classify its output with a command-specific rule.
+    pub(crate) async fn execute_command_os_checked_by<F>(
+        &self,
+        args: Vec<OsString>,
+        is_expected: F,
+    ) -> Result<CommandOutput>
+    where
+        F: FnOnce(&CommandOutput) -> bool,
+    {
         let all_args = self.all_args(args);
         let output = self.execute_command_unchecked_inner(&all_args).await?;
 
-        if !output.success {
+        if !is_expected(&output) {
             return Err(Error::command_failed(
                 render_command(&all_args),
                 output.exit_code,

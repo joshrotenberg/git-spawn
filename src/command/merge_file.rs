@@ -97,6 +97,11 @@ impl GitCommand for MergeFileCommand {
         a
     }
     async fn execute(&self) -> Result<CommandOutput> {
-        self.execute_raw().await
+        // A positive status through 127 is the number of conflicts. The merge
+        // still completed and its output/current-file update must be retained.
+        let allowed: Vec<i32> = (0..=127).collect();
+        self.executor
+            .execute_command_os_allowing(self.build_command_os_args(), &allowed)
+            .await
     }
 }

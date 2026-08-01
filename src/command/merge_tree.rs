@@ -90,6 +90,25 @@ impl GitCommand for MergeTreeCommand {
         a
     }
     async fn execute(&self) -> Result<CommandOutput> {
-        self.execute_raw().await
+        // `--write-tree` exits 1 for a completed merge with conflicts while
+        // still emitting the result tree and conflict details.
+        if self.write_tree {
+            self.executor
+                .execute_command_os_checked_by(self.build_command_os_args(), |output| {
+                    output.exit_code == 0
+                        || (output.exit_code == 1 && starts_with_object_id(&output.stdout))
+                })
+                .await
+        } else {
+            self.execute_raw().await
+        }
     }
+}
+
+fn starts_with_object_id(stdout: &[u8]) -> bool {
+    let first_line = stdout
+        .split(|byte| *byte == b'\n')
+        .next()
+        .unwrap_or_default();
+    matches!(first_line.len(), 40 | 64) && first_line.iter().all(u8::is_ascii_hexdigit)
 }
