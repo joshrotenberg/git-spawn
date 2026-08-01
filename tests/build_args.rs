@@ -16,6 +16,85 @@ fn args_of<C: GitCommand>(c: &C) -> Vec<String> {
 }
 
 #[test]
+fn extended_plumbing_command_args() {
+    let mut revs = RevListCommand::new();
+    revs.max_count(3).since("yesterday").count().range("a..b");
+    assert_eq!(
+        args_of(&revs),
+        [
+            "rev-list",
+            "--max-count=3",
+            "--since=yesterday",
+            "--count",
+            "a..b"
+        ]
+    );
+
+    let mut commit = CommitTreeCommand::new();
+    commit.tree("tree").parent("parent").message("subject");
+    assert_eq!(
+        args_of(&commit),
+        ["commit-tree", "tree", "-p", "parent", "-m", "subject"]
+    );
+
+    let mut index = UpdateIndexCommand::new();
+    index
+        .add()
+        .remove()
+        .assume_unchanged()
+        .cacheinfo("100644", "blob", "cached")
+        .path("file");
+    assert_eq!(
+        args_of(&index),
+        [
+            "update-index",
+            "--add",
+            "--remove",
+            "--assume-unchanged",
+            "--cacheinfo",
+            "100644",
+            "blob",
+            "cached",
+            "--",
+            "file"
+        ]
+    );
+
+    let mut tree = DiffTreeCommand::new();
+    tree.name_status()
+        .null_terminate()
+        .recursive()
+        .tree("HEAD")
+        .path("src");
+    assert_eq!(
+        args_of(&tree),
+        [
+            "diff-tree",
+            "--name-status",
+            "-z",
+            "-r",
+            "HEAD",
+            "--",
+            "src"
+        ]
+    );
+
+    let mut index_diff = DiffIndexCommand::new();
+    index_diff.cached().name_status().tree("HEAD");
+    assert_eq!(
+        args_of(&index_diff),
+        ["diff-index", "--cached", "--name-status", "HEAD"]
+    );
+
+    let mut files = DiffFilesCommand::new();
+    files.name_status().null_terminate().path("src");
+    assert_eq!(
+        args_of(&files),
+        ["diff-files", "--name-status", "-z", "--", "src"]
+    );
+}
+
+#[test]
 fn init_plain() {
     let c = InitCommand::in_directory("/tmp/r");
     assert_eq!(args_of(&c), vec!["init", "/tmp/r"]);
