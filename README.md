@@ -7,7 +7,8 @@
 
 An async Rust wrapper around the `git` CLI. Each git subcommand is a
 builder-style struct; `.execute().await` spawns `git` as a subprocess and
-returns typed output.
+returns command-specific output (usually captured stdout/stderr, with typed
+results where Git exposes a suitably stable shape).
 
 ```rust
 use git_spawn::{GitCommand, Repository};
@@ -28,30 +29,35 @@ async fn main() -> git_spawn::Result<()> {
 
 ```toml
 [dependencies]
-git-spawn = "0.1"
+git-spawn = "0.3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
 MSRV: **1.85** (Rust 2024 edition).
 
-## Capabilities
+`git` must be installed and available on `PATH` at runtime. The crate supports
+Unix and Windows. On Unix, a timed-out command's process group is terminated;
+on other platforms only the direct child can be terminated portably. Hook
+enable/disable helpers manipulate Unix executable bits and become existence
+checks/no-ops, as documented, on platforms without those bits.
 
-- **Porcelain**: init, clone, add, commit, status, log, diff, show, branch,
-  checkout, switch, merge, rebase, pull, push, fetch, remote, tag, stash,
-  reset, restore, rm, mv
-- **Plumbing**: rev-parse, ls-files, ls-tree, cat-file, hash-object,
-  update-ref, for-each-ref
-- **Advanced**: worktree, submodule, bisect, cherry-pick, grep, config, reflog
-- **Typed parsers** (behind the `parse` feature, on by default) for
-  `status --porcelain=v1 -z`, `log` with a fixed token format, and
-  `diff --name-status -z`
-- **Higher-level workflow helpers** (behind the `workflow` feature, off by
-  default) — `repo.info()`, `repo.branches()`, `repo.tags()`,
-  `repo.history()`, and `repo.workflow()` for one-call repo state, typed
-  branch / tag / commit listings, and common compositions like
-  `feature_branch`, `commit_all`, `sync`, `squash_merge`
-- **Escape hatches** on every command (`.arg`, `.args`, `.flag`, `.option`)
-  so flags the typed API hasn't surfaced are still reachable
+## Command builders
+
+The crate currently wraps the following Git commands. Each name maps to a
+builder in `git_spawn::command` (for example, `range-diff` maps to
+`RangeDiffCommand`). Repository-dependent commands also have a pre-scoped
+`Repository` accessor; standalone and hybrid cases are explained below.
+
+| | Commands |
+|-|-|
+| A–C | `add`, `am`, `apply`, `archive`, `bisect`, `blame`, `branch`, `bundle`, `cat-file`, `check-attr`, `check-ignore`, `check-ref-format`, `checkout`, `cherry`, `cherry-pick`, `clean`, `clone`, `commit`, `commit-tree`, `config`, `count-objects` |
+| D–L | `describe`, `diff`, `diff-files`, `diff-index`, `diff-tree`, `fetch`, `for-each-ref`, `format-patch`, `fsck`, `gc`, `grep`, `hash-object`, `init`, `interpret-trailers`, `log`, `ls-files`, `ls-remote`, `ls-tree` |
+| M–R | `maintenance`, `merge`, `merge-base`, `merge-file`, `merge-tree`, `mktree`, `mv`, `name-rev`, `notes`, `pull`, `push`, `range-diff`, `read-tree`, `rebase`, `reflog`, `remote`, `rerere`, `reset`, `restore`, `rev-list`, `rev-parse`, `revert`, `rm` |
+| S–W | `shortlog`, `show`, `show-ref`, `sparse-checkout`, `stash`, `status`, `submodule`, `switch`, `symbolic-ref`, `tag`, `update-index`, `update-ref`, `var`, `verify-commit`, `verify-tag`, `version`, `worktree`, `write-tree` |
+
+Every builder has escape hatches (`.global_arg`, `.global_args`, `.arg`,
+`.args`, `.flag`, and `.option`) so newly added or uncommon Git flags remain
+reachable before the typed API exposes them.
 
 ## Choosing a git library for Rust
 
@@ -149,9 +155,37 @@ async fn modified_paths() -> git_spawn::Result<()> {
 }
 ```
 
-The `parse` feature (on by default) also provides `parse_log` (paired with
-`LOG_FORMAT`) and `parse_diff_name_status`. Enable the `serde` feature to get
-`Serialize` / `Deserialize` on the parsed types.
+The `parse` feature (on by default) provides the complete parser inventory
+below. Pass the listed flags when a parser requires a machine-readable shape;
+parsers marked “default” consume the command's ordinary output. Human-output
+classifiers are necessarily sensitive to Git's locale and wording, and retain
+raw text where useful.
+
+| Parser | Required Git output |
+|-|-|
+| `parse_bisect` | default `git bisect` output (heuristic) |
+| `parse_blame` | `git blame --porcelain` or `--line-porcelain` |
+| `parse_cherry` | default `git cherry`; `-v` adds subjects |
+| `parse_cherry_pick` | combined stdout/stderr from `git cherry-pick` (heuristic) |
+| `parse_commit` | default `git commit` output |
+| `parse_count_objects` / `parse_count_objects_terse` | `git count-objects -v` / default output; `--human-readable` is accepted |
+| `parse_diff_name_status` | `git diff --name-status -z` |
+| `parse_diff_numstat` / `parse_diff_stat` | `git diff --numstat -z` / `git diff --stat` |
+| `parse_log` | `git log --format=<LOG_FORMAT>` |
+| `parse_ls_remote` / `parse_ls_remote_symrefs` | default `git ls-remote` / `git ls-remote --symref` |
+| `parse_ls_tree` / `parse_ls_tree_name_only` | default (optionally `-l`) / `git ls-tree --name-only` |
+| `parse_merge` | default `git merge` stdout (heuristic) |
+| `parse_notes_list` | `git notes list` |
+| `parse_pull` / `parse_rebase` | default command output (heuristic) |
+| `parse_reflog` | `git reflog show --format=<REFLOG_FORMAT>` |
+| `parse_shortlog` | default `git shortlog` output |
+| `parse_show` | `git show --format=<LOG_FORMAT>`; optionally `--stat` |
+| `parse_status` / `parse_full_status` | `git status --porcelain=v1 -z` / the same plus `-b` |
+| `parse_submodule_status` | `git submodule status` |
+| `parse_version` | `git --version`; `--build-options` is accepted |
+
+Enable `serde` to derive `Serialize` and `Deserialize` on parsed and workflow
+value types.
 
 ### Checked and unchecked execution
 
@@ -183,7 +217,7 @@ common compositions:
 
 ```toml
 [dependencies]
-git-spawn = { version = "0.1", features = ["workflow"] }
+git-spawn = { version = "0.3", features = ["workflow"] }
 ```
 
 ```rust
@@ -212,8 +246,25 @@ async fn quick_status() -> git_spawn::Result<()> {
 }
 ```
 
-See the module docs for `info`, `branches`, `tags`, `history`, and `workflow`
-for the full surface.
+The complete helper surface is:
+
+| Accessor | Operations |
+|-|-|
+| `info()` | repository, branch, upstream, default-branch, dirty, and ahead/behind summary |
+| `branches()` | `list`, `list_matching`, `delete_merged`, `rename` |
+| `changes()` | typed staged, unstaged, untracked, and tracking `summary` |
+| `conflicts()` | `list`, `resolve` |
+| `history()` | filtered commit walk: `max_count`, `skip`, `since`, `until`, `author`, `grep`, `revision`, `path`, `reverse`, `execute` |
+| `hooks()` | `list`, `install`, `remove`, `enable`, `disable` |
+| `patches()` | `format` (with `output_dir`, `numbered`, `signoff`), `apply`, `am` |
+| `remotes()` | `list`, `add`, `remove`, `rename`, `set_url`, `get_url` |
+| `search()` | `pattern`, `in_path`, `in_paths`, `case_insensitive`, `word_regexp`, `fixed_strings`, `extended_regexp`, `perl_regexp`, `cached`, `execute` |
+| `signing()` | `signing_key`, `format`, `sign_commits`, `sign_tags`, `config`, and the corresponding `set_*` methods |
+| `stashes()` | `list`, `push`, `pop`, `apply`, `drop`, `clear` |
+| `tags()` | `list`, `list_matching`, `create`, `create_annotated`, `delete` |
+| `workflow()` | `feature_branch`, `commit_all`, `sync`, `squash_merge` |
+
+See each module's rustdoc for return types, exact behavior, and limitations.
 
 ### Escape hatches
 
@@ -271,9 +322,9 @@ async fn careful_fetch() -> git_spawn::Result<()> {
 
 | Flag       | Default | Purpose                                                                |
 |------------|:-------:|------------------------------------------------------------------------|
-| `parse`    |   on    | Typed parsers for status / log / diff output                           |
-| `serde`    |   off   | `Serialize` / `Deserialize` on parsed types                            |
-| `workflow` |   off   | Higher-level helpers: `info`, `branches`, `tags`, `history`, workflow compositions (implies `parse`) |
+| `parse`    |   on    | All typed output parsers listed above                                  |
+| `serde`    |   off   | `Serialize` / `Deserialize` derives on parsed and workflow value types |
+| `workflow` |   off   | All higher-level helpers listed above; implies `parse`                  |
 
 ## Contributing
 

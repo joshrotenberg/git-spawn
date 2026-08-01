@@ -2,7 +2,7 @@
 //!
 //! A Rust wrapper around the `git` CLI. Each git subcommand is a struct with a
 //! builder-style API; calling [`.execute().await`](GitCommand::execute) spawns
-//! `git` as a subprocess and returns typed output.
+//! `git` as a subprocess and returns command-specific output.
 //!
 //! Unlike libraries that link against libgit2, this crate shells out to the
 //! `git` binary installed on the host. That choice has trade-offs:
@@ -99,9 +99,9 @@
 //!
 //! | Flag       | Default | Purpose                                            |
 //! |------------|:-------:|----------------------------------------------------|
-//! | `parse`    |   on    | Typed parsers for status/log/diff/pull output      |
-//! | `serde`    |   off   | `Serialize`/`Deserialize` on parsed types          |
-//! | `workflow` |   off   | Higher-level helpers ([`info`], [`branches`], [`tags`], [`history`], [`stashes`], [`conflicts`], [`search`], [`hooks`], [`patches`], [`workflow`]) |
+//! | `parse`    |   on    | Typed parsers in [`parse`]                         |
+//! | `serde`    |   off   | `Serialize`/`Deserialize` on parser and workflow value types |
+//! | `workflow` |   off   | Higher-level helpers ([`info`], [`branches`], [`changes`], [`conflicts`], [`history`], [`hooks`], [`patches`], [`remotes`], [`search`], [`signing`], [`stashes`], [`tags`], [`workflow`]); implies `parse` |
 //!
 //! ## Error handling
 //!
