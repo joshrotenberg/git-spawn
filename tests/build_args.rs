@@ -1525,3 +1525,53 @@ fn check_ignore_quiet() {
     c.path("app.log").quiet();
     assert_eq!(args_of(&c), vec!["check-ignore", "-q", "--", "app.log"]);
 }
+
+#[test]
+fn check_attr_names_precede_the_path_separator() {
+    let mut c = CheckAttrCommand::new();
+    c.attributes(["text", "diff"])
+        .paths(["README.md", "-generated"]);
+    assert_eq!(
+        args_of(&c),
+        vec![
+            "check-attr",
+            "text",
+            "diff",
+            "--",
+            "README.md",
+            "-generated"
+        ]
+    );
+}
+
+#[test]
+fn check_attr_all_and_cached_precede_paths() {
+    let mut c = CheckAttrCommand::new();
+    c.path("README.md").cached().all();
+    assert_eq!(
+        args_of(&c),
+        vec!["check-attr", "--all", "--cached", "--", "README.md"]
+    );
+}
+
+#[test]
+fn check_ref_format_full_ref_options() {
+    let mut c = CheckRefFormatCommand::new("refs/heads/topic/*");
+    c.allow_onelevel().refspec_pattern().normalize();
+    assert_eq!(
+        args_of(&c),
+        vec![
+            "check-ref-format",
+            "--allow-onelevel",
+            "--refspec-pattern",
+            "--normalize",
+            "refs/heads/topic/*"
+        ]
+    );
+}
+
+#[test]
+fn check_ref_format_branch_mode() {
+    let c = CheckRefFormatCommand::branch("topic");
+    assert_eq!(args_of(&c), vec!["check-ref-format", "--branch", "topic"]);
+}
