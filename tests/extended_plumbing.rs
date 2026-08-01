@@ -100,7 +100,19 @@ async fn merge_tree_returns_conflicted_output() {
     repo.add().path("file.txt").execute().await.unwrap();
     repo.commit().message("theirs").execute().await.unwrap();
 
-    let output = repo
+    let clean = repo
+        .merge_tree()
+        .write_tree()
+        .ours("main")
+        .theirs("main")
+        .execute()
+        .await
+        .unwrap();
+    assert!(clean.clean);
+    assert_eq!(clean.tree.len(), 40);
+    assert!(clean.conflicts.is_empty());
+
+    let result = repo
         .merge_tree()
         .write_tree()
         .ours("ours")
@@ -108,9 +120,22 @@ async fn merge_tree_returns_conflicted_output() {
         .execute()
         .await
         .unwrap();
-    assert_eq!(output.exit_code, 1);
-    assert_eq!(output.stdout_lines()[0].len(), 40);
-    assert!(output.stdout_str().contains("CONFLICT"));
+    assert!(!result.clean);
+    assert_eq!(result.tree.len(), 40);
+    assert_eq!(result.conflicts, ["file.txt"]);
+
+    let nul_result = repo
+        .merge_tree()
+        .write_tree()
+        .null_terminate()
+        .ours("ours")
+        .theirs("main")
+        .execute()
+        .await
+        .unwrap();
+    assert!(!nul_result.clean);
+    assert_eq!(nul_result.tree.len(), 40);
+    assert_eq!(nul_result.conflicts, ["file.txt"]);
 
     let mut invalid = repo.merge_tree();
     invalid.write_tree().ours("missing").theirs("main");

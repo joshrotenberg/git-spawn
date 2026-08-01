@@ -171,6 +171,7 @@ pub mod tags;
 #[cfg_attr(docsrs, doc(cfg(feature = "workflow")))]
 pub mod workflow;
 
+pub use command::merge_tree::MergeTreeResult;
 pub use command::{
     CommandExecutor, CommandOutput, GitCommand, add::AddCommand, am::AmCommand,
     apply::ApplyCommand, archive::ArchiveCommand, bisect::BisectCommand, blame::BlameCommand,

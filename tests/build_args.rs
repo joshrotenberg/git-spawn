@@ -92,6 +92,24 @@ fn extended_plumbing_command_args() {
         args_of(&files),
         ["diff-files", "--name-status", "-z", "--", "src"]
     );
+
+    let mut merge = MergeTreeCommand::new();
+    merge
+        .write_tree()
+        .null_terminate()
+        .ours("main")
+        .theirs("topic");
+    assert_eq!(
+        args_of(&merge),
+        [
+            "merge-tree",
+            "--write-tree",
+            "--name-only",
+            "-z",
+            "main",
+            "topic"
+        ]
+    );
 }
 
 #[test]
