@@ -37,27 +37,27 @@ use crate::command::{
     GitCommand, add::AddCommand, am::AmCommand, apply::ApplyCommand, archive::ArchiveCommand,
     bisect::BisectCommand, blame::BlameCommand, branch::BranchCommand, bundle::BundleCommand,
     cat_file::CatFileCommand, check_attr::CheckAttrCommand, check_ignore::CheckIgnoreCommand,
-    checkout::CheckoutCommand, cherry::CherryCommand, cherry_pick::CherryPickCommand,
-    clean::CleanCommand, clone::CloneCommand, commit::CommitCommand,
-    commit_tree::CommitTreeCommand, config::ConfigCommand, count_objects::CountObjectsCommand,
-    describe::DescribeCommand, diff::DiffCommand, diff_files::DiffFilesCommand,
-    diff_index::DiffIndexCommand, diff_tree::DiffTreeCommand, fetch::FetchCommand,
-    for_each_ref::ForEachRefCommand, format_patch::FormatPatchCommand, fsck::FsckCommand,
-    gc::GcCommand, grep::GrepCommand, hash_object::HashObjectCommand, init::InitCommand,
-    interpret_trailers::InterpretTrailersCommand, log::LogCommand, ls_files::LsFilesCommand,
-    ls_remote::LsRemoteCommand, ls_tree::LsTreeCommand, maintenance::MaintenanceCommand,
-    merge::MergeCommand, merge_base::MergeBaseCommand, merge_file::MergeFileCommand,
-    merge_tree::MergeTreeCommand, mktree::MkTreeCommand, mv::MvCommand, name_rev::NameRevCommand,
-    notes::NotesCommand, pull::PullCommand, push::PushCommand, range_diff::RangeDiffCommand,
-    read_tree::ReadTreeCommand, rebase::RebaseCommand, reflog::ReflogCommand,
-    remote::RemoteCommand, rerere::RerereCommand, reset::ResetCommand, restore::RestoreCommand,
-    rev_list::RevListCommand, rev_parse::RevParseCommand, revert::RevertCommand, rm::RmCommand,
-    shortlog::ShortlogCommand, show::ShowCommand, show_ref::ShowRefCommand,
-    sparse_checkout::SparseCheckoutCommand, stash::StashCommand, status::StatusCommand,
-    submodule::SubmoduleCommand, switch::SwitchCommand, symbolic_ref::SymbolicRefCommand,
-    tag::TagCommand, update_index::UpdateIndexCommand, update_ref::UpdateRefCommand,
-    var::VarCommand, verify_commit::VerifyCommitCommand, verify_tag::VerifyTagCommand,
-    worktree::WorktreeCommand, write_tree::WriteTreeCommand,
+    check_ref_format::CheckRefFormatCommand, checkout::CheckoutCommand, cherry::CherryCommand,
+    cherry_pick::CherryPickCommand, clean::CleanCommand, clone::CloneCommand,
+    commit::CommitCommand, commit_tree::CommitTreeCommand, config::ConfigCommand,
+    count_objects::CountObjectsCommand, describe::DescribeCommand, diff::DiffCommand,
+    diff_files::DiffFilesCommand, diff_index::DiffIndexCommand, diff_tree::DiffTreeCommand,
+    fetch::FetchCommand, for_each_ref::ForEachRefCommand, format_patch::FormatPatchCommand,
+    fsck::FsckCommand, gc::GcCommand, grep::GrepCommand, hash_object::HashObjectCommand,
+    init::InitCommand, interpret_trailers::InterpretTrailersCommand, log::LogCommand,
+    ls_files::LsFilesCommand, ls_remote::LsRemoteCommand, ls_tree::LsTreeCommand,
+    maintenance::MaintenanceCommand, merge::MergeCommand, merge_base::MergeBaseCommand,
+    merge_file::MergeFileCommand, merge_tree::MergeTreeCommand, mktree::MkTreeCommand,
+    mv::MvCommand, name_rev::NameRevCommand, notes::NotesCommand, pull::PullCommand,
+    push::PushCommand, range_diff::RangeDiffCommand, read_tree::ReadTreeCommand,
+    rebase::RebaseCommand, reflog::ReflogCommand, remote::RemoteCommand, rerere::RerereCommand,
+    reset::ResetCommand, restore::RestoreCommand, rev_list::RevListCommand,
+    rev_parse::RevParseCommand, revert::RevertCommand, rm::RmCommand, shortlog::ShortlogCommand,
+    show::ShowCommand, show_ref::ShowRefCommand, sparse_checkout::SparseCheckoutCommand,
+    stash::StashCommand, status::StatusCommand, submodule::SubmoduleCommand, switch::SwitchCommand,
+    symbolic_ref::SymbolicRefCommand, tag::TagCommand, update_index::UpdateIndexCommand,
+    update_ref::UpdateRefCommand, var::VarCommand, verify_commit::VerifyCommitCommand,
+    verify_tag::VerifyTagCommand, worktree::WorktreeCommand, write_tree::WriteTreeCommand,
 };
 use crate::error::{Error, Result};
 use std::path::{Path, PathBuf};
@@ -539,6 +539,15 @@ impl Repository {
         self.scoped(LsRemoteCommand::new())
     }
 
+    /// Scope a [`CheckRefFormatCommand`] to this repository.
+    ///
+    /// Full ref-name validation is standalone, but branch mode can expand
+    /// reflog syntax such as `@{-1}` against the scoped repository.
+    #[must_use]
+    pub fn check_ref_format(&self, command: CheckRefFormatCommand) -> CheckRefFormatCommand {
+        self.scoped(command)
+    }
+
     /// Scope a [`MaintenanceCommand`] action to this repository.
     #[must_use]
     pub fn maintenance(&self, action: MaintenanceCommand) -> MaintenanceCommand {
@@ -734,6 +743,10 @@ mod tests {
         assert_scoped!(repo.gc(), ["gc"]);
         assert_scoped!(repo.interpret_trailers(), ["interpret-trailers"]);
         assert_scoped!(repo.ls_remote(), ["ls-remote"]);
+        assert_scoped!(
+            repo.check_ref_format(CheckRefFormatCommand::branch("@{-1}")),
+            ["check-ref-format", "--branch", "@{-1}"]
+        );
         assert_scoped!(
             repo.maintenance(MaintenanceCommand::run()),
             ["maintenance", "run"]
