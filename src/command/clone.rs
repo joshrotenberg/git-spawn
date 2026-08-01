@@ -20,6 +20,10 @@ pub struct CloneCommand {
     pub bare: bool,
     /// `--mirror`.
     pub mirror: bool,
+    /// `--no-checkout`.
+    pub no_checkout: bool,
+    /// `--no-local`.
+    pub no_local: bool,
     /// `--depth`.
     pub depth: Option<u32>,
     /// `--branch`.
@@ -43,6 +47,8 @@ impl CloneCommand {
             directory: None,
             bare: false,
             mirror: false,
+            no_checkout: false,
+            no_local: false,
             depth: None,
             branch: None,
             single_branch: false,
@@ -67,6 +73,18 @@ impl CloneCommand {
     /// Mirror all refs.
     pub fn mirror(&mut self) -> &mut Self {
         self.mirror = true;
+        self
+    }
+
+    /// Do not check out `HEAD` after cloning.
+    pub fn no_checkout(&mut self) -> &mut Self {
+        self.no_checkout = true;
+        self
+    }
+
+    /// Do not use local clone optimizations.
+    pub fn no_local(&mut self) -> &mut Self {
+        self.no_local = true;
         self
     }
 
@@ -126,6 +144,12 @@ impl GitCommand for CloneCommand {
         }
         if self.mirror {
             args.push("--mirror".into());
+        }
+        if self.no_checkout {
+            args.push("--no-checkout".into());
+        }
+        if self.no_local {
+            args.push("--no-local".into());
         }
         if let Some(d) = self.depth {
             args.push(format!("--depth={d}"));
@@ -203,5 +227,28 @@ mod tests {
     #[test]
     fn infer_ssh_url() {
         assert_eq!(infer_dest_dir("git@github.com:foo/bar.git"), "bar");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn destination_preserves_non_utf8_bytes() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::{OsStrExt, OsStringExt};
+
+        let destination = OsString::from_vec(b"clone-\xff".to_vec());
+        let mut command = CloneCommand::new("https://example.com/foo.git");
+        command
+            .no_checkout()
+            .no_local()
+            .directory(destination.clone());
+
+        let args = command.build_command_os_args();
+        assert_eq!(args[1], "--no-checkout");
+        assert_eq!(args[2], "--no-local");
+        assert_eq!(args[3], "https://example.com/foo.git");
+        assert_eq!(
+            args[4].as_os_str().as_bytes(),
+            destination.as_os_str().as_bytes()
+        );
     }
 }
