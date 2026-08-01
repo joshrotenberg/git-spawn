@@ -28,6 +28,11 @@ ruleset, so update that rule in place; if it is absent in a restored or forked
 repository, import the JSON as a new active ruleset. Do not leave two
 overlapping rulesets. Require both stable check names:
 
+For the canonical repository, this configuration was applied in place to
+ruleset [`16766350`](https://github.com/joshrotenberg/git-spawn/rules/16766350)
+on 2026-08-01. The committed JSON is the reviewable source for that external
+setting.
+
 - `Required checks` is the rollup for every matrix and non-matrix job in
   `ci.yml`.
 - `Conventional PR title` protects the squash-merge commit format used by
