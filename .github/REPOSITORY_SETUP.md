@@ -93,6 +93,41 @@ that met that rule. It retained `release-plz-2026-07-13T21-37-30Z` because it is
 the head of held release PR #59. At the end of the audit, the only other remote
 branches were `main` and the in-progress branch for issue #124.
 
+### 2026-08-01 audit record
+
+The comparison base was `main` at
+`2f4148e8da630f98013bbc50dd7467dca191d2e7`. The following table records every
+deleted ref and its pre-deletion tip. "Ancestor" means `git merge-base
+--is-ancestor <tip> main` succeeded; the named merge commit and pull request
+provide the durable incorporation evidence. A recorded tip can also be used to
+reconstruct a deleted ref while the object remains available.
+
+| Deleted branch | Tip | Pull request / disposition |
+| --- | --- | --- |
+| `feat/porcelain` | `f87d70dcd9c3c90a428cff9bc34771f9a16d30e6` | Ancestor; merged by PR #1 (`0456650`). |
+| `feat/ci` | `821bc20174fe01468761633dd381ea452385292f` | Ancestor; merged by PR #2 (`992ef61`). |
+| `feat/plumbing-and-docs` | `bde0d19a9a62c517b79db599e1b6b0dbb808a268` | Ancestor; merged by PR #3 (`31f4cfe`). |
+| `feat/advanced` | `bab562422228cdb37fc0acfe62e80f3378820a13` | Ancestor; merged by PR #4 (`8288d7d`). |
+| `docs/readme` | `5199d07580bd8c253e773582935828cd9e6cddc3` | Ancestor; merged by PR #5 (`89c29be`). |
+| `feat/examples-and-plumbing` | `4d840f5e04078c8714cffc303d41beb4edf7e4cb` | Ancestor; merged by PR #6 (`017964c`). |
+| `feat/workflow-modules` | `8b80d91c4ae1ee1fd54ddac43f19cf7c7d0f94bd` | Ancestor; merged by PR #8 (`af752c9`). |
+| `feat/workflow-modules-pt2` | `dee8dc615f8dccf133bceeff278051ebe96cd740` | Ancestor; merged by PR #9 (`7d611c1`). |
+| `arsenalotto/issue-128-executor-support-piped-stdin-bytes` | `5d2afc7ebefdbb1faab14a959f6df782eb71b63c` | PR #131 was closed as superseded by issue #132 and merged PR #133 (`3893cd6`). The later implementation preserves the intended stdin-byte support on `main`. |
+| `release-plz-2026-04-14T04-18-24Z` | `14cef5757ad9aaa2c084f0c0eddaf49119c0d22a` | Abandoned release-plz attempt; its only unique commit was an obsolete `v0.1.1` release bump. Superseded by the published `v0.1.1` through `v0.2.1` history and active release PR #59 for `v0.3.0`. |
+| `release-plz-2026-04-14T04-31-20Z` | `de3c06d08206b8bec85ee1f7e7795660528c7407` | Same abandoned `v0.1.1` disposition; no open PR used this branch. |
+| `release-plz-2026-04-14T04-41-55Z` | `af656ede17307212509b5cb51983b3c1754fa46f` | Same abandoned `v0.1.1` disposition; no open PR used this branch. |
+| `release-plz-2026-04-14T04-47-46Z` | `a9b56782875ef6798530dd8fe04c36e20c5c1a3d` | Same abandoned `v0.1.1` disposition; no open PR used this branch. |
+| `release-plz-2026-04-14T13-43-42Z` | `75a39d5a657a4ba6942912305a51ddbcfc6117c4` | Same abandoned `v0.1.1` disposition; no open PR used this branch. |
+| `release-plz-2026-05-22T02-06-36Z` | `95ef7fa406539803b136f27f1e363ef8858c80e8` | Same abandoned `v0.1.1` disposition; no open PR used this branch. |
+| `release-plz-2026-05-22T03-39-08Z` | `cf3b0ea5eee28705a1df9a4ffe880b0a61e646e2` | Same abandoned `v0.1.1` disposition; no open PR used this branch. |
+
+The release-plz tips were each 82--95 commits behind the comparison base. Their
+unique changes only proposed an old version/changelog bump; later release
+commits `111a980` (`v0.1.1`), `d70183e` (the `v0.2.0` changelog), and `ff25b1f`
+(`v0.2.1`) superseded that generated state. The audit therefore deliberately
+abandoned those unique bot commits rather than treating them as merged work.
+The retained PR #59 branch was separately verified as the sole open release PR.
+
 Run the following read-only audit periodically and before deleting branches:
 
 ```bash
