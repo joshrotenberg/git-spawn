@@ -372,6 +372,33 @@ impl GitCommand for SubmoduleCommand {
         }
         args
     }
+    fn build_command_os_args(&self) -> Vec<std::ffi::OsString> {
+        let mut args: Vec<_> = self
+            .build_command_args()
+            .into_iter()
+            .map(std::ffi::OsString::from)
+            .collect();
+        let paths: &[PathBuf] = match &self.action {
+            SubmoduleAction::Add {
+                path: Some(path), ..
+            } => {
+                let index = args.len() - 1;
+                args[index] = path.as_os_str().to_owned();
+                return args;
+            }
+            SubmoduleAction::Add { path: None, .. } | SubmoduleAction::Foreach { .. } => &[],
+            SubmoduleAction::Init { paths }
+            | SubmoduleAction::Update { paths, .. }
+            | SubmoduleAction::Status { paths, .. }
+            | SubmoduleAction::Deinit { paths, .. }
+            | SubmoduleAction::Sync { paths, .. } => paths,
+        };
+        let offset = args.len() - paths.len();
+        for (arg, path) in args[offset..].iter_mut().zip(paths) {
+            *arg = path.as_os_str().to_owned();
+        }
+        args
+    }
     async fn execute(&self) -> Result<CommandOutput> {
         self.execute_raw().await
     }

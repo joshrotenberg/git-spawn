@@ -459,6 +459,48 @@ impl GitCommand for NotesCommand {
         }
         args
     }
+    fn build_command_os_args(&self) -> Vec<std::ffi::OsString> {
+        let mut args: Vec<_> = self
+            .build_command_args()
+            .into_iter()
+            .map(std::ffi::OsString::from)
+            .collect();
+        let path_and_index = match &self.action {
+            NotesAction::Add {
+                message,
+                message_file: Some(path),
+                force,
+                allow_empty,
+                no_stripspace,
+                ..
+            } => Some((
+                path,
+                3 + usize::from(self.ref_namespace.is_some()) * 2
+                    + usize::from(*force)
+                    + usize::from(*allow_empty)
+                    + usize::from(*no_stripspace)
+                    + usize::from(message.is_some()) * 2,
+            )),
+            NotesAction::Append {
+                message,
+                message_file: Some(path),
+                allow_empty,
+                no_stripspace,
+                ..
+            } => Some((
+                path,
+                3 + usize::from(self.ref_namespace.is_some()) * 2
+                    + usize::from(*allow_empty)
+                    + usize::from(*no_stripspace)
+                    + usize::from(message.is_some()) * 2,
+            )),
+            _ => None,
+        };
+        if let Some((path, index)) = path_and_index {
+            args[index] = path.as_os_str().to_owned();
+        }
+        args
+    }
     async fn execute(&self) -> Result<CommandOutput> {
         self.execute_raw().await
     }

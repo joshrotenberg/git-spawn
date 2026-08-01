@@ -287,6 +287,24 @@ impl GitCommand for MaintenanceCommand {
         args
     }
 
+    fn build_command_os_args(&self) -> Vec<std::ffi::OsString> {
+        let mut args: Vec<_> = self
+            .build_command_args()
+            .into_iter()
+            .map(std::ffi::OsString::from)
+            .collect();
+        let config_file = match &self.action {
+            MaintenanceAction::Register { config_file }
+            | MaintenanceAction::Unregister { config_file, .. } => config_file.as_ref(),
+            MaintenanceAction::Run { .. } => None,
+        };
+        if let Some(path) = config_file {
+            *args.last_mut().expect("maintenance config file argument") =
+                path.as_os_str().to_owned();
+        }
+        args
+    }
+
     async fn execute(&self) -> Result<CommandOutput> {
         self.execute_raw().await
     }

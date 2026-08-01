@@ -148,6 +148,24 @@ impl GitCommand for ArchiveCommand {
         args
     }
 
+    fn build_command_os_args(&self) -> Vec<std::ffi::OsString> {
+        let mut args: Vec<_> = self
+            .build_command_args()
+            .into_iter()
+            .map(std::ffi::OsString::from)
+            .collect();
+        let path_offset = args.len() - self.paths.len();
+        for (arg, path) in args[path_offset..].iter_mut().zip(&self.paths) {
+            *arg = path.as_os_str().to_owned();
+        }
+        if let Some(output) = &self.output {
+            let output_index =
+                1 + usize::from(self.format.is_some()) + usize::from(self.prefix.is_some()) + 1;
+            args[output_index] = output.as_os_str().to_owned();
+        }
+        args
+    }
+
     async fn execute(&self) -> Result<CommandOutput> {
         if self.tree_ish.is_none() {
             return Err(Error::invalid_config("archive requires a tree-ish"));

@@ -207,6 +207,17 @@ impl GitCommand for BisectCommand {
         }
         args
     }
+    fn build_command_os_args(&self) -> Vec<std::ffi::OsString> {
+        let mut args: Vec<_> = self
+            .build_command_args()
+            .into_iter()
+            .map(std::ffi::OsString::from)
+            .collect();
+        if let BisectAction::Replay(path) = &self.action {
+            args[2] = path.as_os_str().to_owned();
+        }
+        args
+    }
     async fn execute(&self) -> Result<CommandOutput> {
         self.execute_raw().await
     }

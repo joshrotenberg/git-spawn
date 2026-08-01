@@ -202,6 +202,24 @@ impl GitCommand for CommitCommand {
         args
     }
 
+    fn build_command_os_args(&self) -> Vec<std::ffi::OsString> {
+        let mut args: Vec<_> = self
+            .build_command_args()
+            .into_iter()
+            .map(std::ffi::OsString::from)
+            .collect();
+        if let Some(path) = &self.message_file {
+            let path_suffix = if self.only_paths.is_empty() {
+                0
+            } else {
+                self.only_paths.len() + 2
+            };
+            let index = args.len() - path_suffix - 1;
+            args[index] = path.as_os_str().to_owned();
+        }
+        args
+    }
+
     async fn execute(&self) -> Result<CommandOutput> {
         self.execute_raw().await
     }
