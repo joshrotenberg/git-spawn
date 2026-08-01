@@ -9,6 +9,7 @@
 //! - [`with_timeout()`](GitCommand::with_timeout) — cap execution time
 //! - [`current_dir()`](GitCommand::current_dir) / [`env()`](GitCommand::env) —
 //!   control the subprocess environment
+//! - [`stdin_bytes()`](GitCommand::stdin_bytes) — pipe exact bytes to stdin
 //!
 //! Under the hood, each command delegates to a shared [`CommandExecutor`] that
 //! spawns `git` via [`tokio::process::Command`], captures stdout/stderr, and
@@ -59,6 +60,7 @@ use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
+use tokio::io::AsyncWriteExt;
 use tokio::process::Command as TokioCommand;
 use tracing::{debug, error, instrument, trace, warn};
 
@@ -215,6 +217,16 @@ pub trait GitCommand {
         self.get_executor_mut().timeout = Some(Duration::from_secs(seconds));
         self
     }
+
+    /// Supply owned bytes to the subprocess's stdin.
+    ///
+    /// Calling this with an empty value still configures a pipe, which is
+    /// immediately closed after writing. Not calling it leaves stdin
+    /// unconfigured, preserving the executor's existing behavior.
+    fn stdin_bytes(&mut self, bytes: impl Into<Vec<u8>>) -> &mut Self {
+        self.get_executor_mut().stdin = Some(bytes.into());
+        self
+    }
 }
 
 /// Shared machinery used by every [`GitCommand`] to spawn `git`.
@@ -228,6 +240,8 @@ pub struct CommandExecutor {
     pub env: HashMap<OsString, OsString>,
     /// Optional execution timeout.
     pub timeout: Option<Duration>,
+    /// Bytes to pipe to stdin. `Some([])` is distinct from no configured stdin.
+    pub stdin: Option<Vec<u8>>,
 }
 
 impl CommandExecutor {
@@ -255,6 +269,13 @@ impl CommandExecutor {
     #[must_use]
     pub fn timeout(mut self, timeout: Duration) -> Self {
         self.timeout = Some(timeout);
+        self
+    }
+
+    /// Builder: supply owned bytes to the subprocess's stdin.
+    #[must_use]
+    pub fn stdin_bytes(mut self, bytes: impl Into<Vec<u8>>) -> Self {
+        self.stdin = Some(bytes.into());
         self
     }
 
@@ -350,6 +371,10 @@ impl CommandExecutor {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
+        if self.stdin.is_some() {
+            cmd.stdin(Stdio::piped());
+        }
+
         if let Some(dir) = &self.cwd {
             cmd.current_dir(dir);
         }
@@ -391,11 +416,20 @@ impl CommandExecutor {
     }
 
     async fn execute_internal(&self, all_args: &[String]) -> Result<CommandOutput> {
-        let output = self
+        if self.stdin.is_none() {
+            let output = self
+                .build_command(all_args)
+                .output()
+                .await
+                .map_err(map_spawn_error)?;
+            return self.finish(all_args, output);
+        }
+
+        let child = self
             .build_command(all_args)
-            .output()
-            .await
+            .spawn()
             .map_err(map_spawn_error)?;
+        let output = self.wait_with_output(child).await.map_err(map_wait_error)?;
         self.finish(all_args, output)
     }
 
@@ -413,12 +447,9 @@ impl CommandExecutor {
         // takes ownership of the child; we need it to signal the group on timeout.
         let pid = child.id();
 
-        match tokio::time::timeout(timeout_duration, child.wait_with_output()).await {
+        match tokio::time::timeout(timeout_duration, self.wait_with_output(child)).await {
             Ok(Ok(output)) => self.finish(all_args, output),
-            Ok(Err(e)) => Err(Error::Io {
-                message: format!("failed to run git: {e}"),
-                source: e,
-            }),
+            Ok(Err(e)) => Err(map_wait_error(e)),
             Err(_) => {
                 // The `wait_with_output` future has been dropped, so the direct
                 // child is being killed via `kill_on_drop`. Also signal the whole
@@ -434,6 +465,28 @@ impl CommandExecutor {
             }
         }
     }
+
+    /// Write configured stdin while stdout/stderr are drained, close the pipe,
+    /// and wait for the process. Writing concurrently avoids pipe-buffer
+    /// deadlocks for commands that produce output before consuming all input.
+    async fn wait_with_output(
+        &self,
+        mut child: tokio::process::Child,
+    ) -> std::io::Result<std::process::Output> {
+        let Some(bytes) = self.stdin.as_deref() else {
+            return child.wait_with_output().await;
+        };
+
+        let mut stdin = child.stdin.take().ok_or_else(|| {
+            std::io::Error::other("git stdin was configured but no pipe was available")
+        })?;
+        let write_stdin = async move {
+            stdin.write_all(bytes).await?;
+            stdin.shutdown().await
+        };
+        let ((), output) = tokio::try_join!(write_stdin, child.wait_with_output())?;
+        Ok(output)
+    }
 }
 
 /// Map a spawn error to [`Error::GitNotFound`] when the binary is missing,
@@ -446,6 +499,13 @@ fn map_spawn_error(e: std::io::Error) -> Error {
             message: format!("failed to spawn git: {e}"),
             source: e,
         }
+    }
+}
+
+fn map_wait_error(e: std::io::Error) -> Error {
+    Error::Io {
+        message: format!("failed to run git: {e}"),
+        source: e,
     }
 }
 
@@ -563,6 +623,14 @@ mod tests {
     fn executor_timeout_builder() {
         let e = CommandExecutor::new().timeout(Duration::from_secs(5));
         assert_eq!(e.timeout, Some(Duration::from_secs(5)));
+    }
+
+    #[test]
+    fn executor_stdin_builder_distinguishes_empty_from_absent() {
+        let absent = CommandExecutor::new();
+        let empty = CommandExecutor::new().stdin_bytes(Vec::new());
+        assert!(absent.stdin.is_none());
+        assert_eq!(empty.stdin, Some(Vec::new()));
     }
 
     #[test]

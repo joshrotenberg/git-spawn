@@ -18,9 +18,9 @@ use async_trait::async_trait;
 /// tests tracked paths too, instead of suppressing them merely because they are
 /// already in the index.
 ///
-/// Stdin and NUL-delimited modes are intentionally not modelled because the
-/// executor does not pipe stdin. Paths are passed after `--`, so names that
-/// begin with a dash cannot be mistaken for options.
+/// Stdin and NUL-delimited modes are not modelled by this typed builder, though
+/// the shared executor can pipe bytes with [`GitCommand::stdin_bytes`]. Paths
+/// are passed after `--`, so names beginning with a dash remain unambiguous.
 #[derive(Debug, Clone, Default)]
 pub struct CheckIgnoreCommand {
     /// Shared executor.

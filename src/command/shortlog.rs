@@ -8,10 +8,9 @@ use async_trait::async_trait;
 ///
 /// At least one revision is required. Given no revision argument and a
 /// non-terminal standard input, `git shortlog` summarizes a log read from
-/// stdin instead of the repository; [`CommandExecutor`] does not model stdin,
-/// so that run would consume the parent process's input. [`execute`](GitCommand::execute)
-/// rejects an empty revision list as [`Error::InvalidConfig`] rather than
-/// leaving the command pointed at whatever stdin happens to be.
+/// stdin instead of the repository. This typed builder requires a revision;
+/// callers needing stdin-driven behavior can use the shared
+/// [`CommandExecutor`] directly and provide [`CommandExecutor::stdin_bytes`].
 ///
 /// The default output lists each author with a count and the subject of every
 /// commit. [`summary`](Self::summary) drops the subjects, leaving one line per

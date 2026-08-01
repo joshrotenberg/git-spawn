@@ -105,6 +105,34 @@ async fn hash_object_write_and_read_back() {
 }
 
 #[tokio::test]
+async fn hash_object_stdin_preserves_arbitrary_bytes() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let bytes = vec![0x00, 0xff, b'\n', b'g', b'i', b't'];
+
+    let mut expected = HashObjectCommand::new();
+    let path = repo.path().join("stdin-bytes.bin");
+    std::fs::write(&path, &bytes).unwrap();
+    expected.current_dir(repo.path()).path(path);
+    let expected = expected.execute().await.unwrap();
+
+    let actual = repo.hash_object().stdin(bytes).execute().await.unwrap();
+    assert_eq!(actual, expected);
+}
+
+#[tokio::test]
+async fn hash_object_empty_stdin_completes() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let sha = repo
+        .hash_object()
+        .stdin(Vec::new())
+        .with_timeout(std::time::Duration::from_secs(5))
+        .execute()
+        .await
+        .unwrap();
+    assert_eq!(sha, "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391");
+}
+
+#[tokio::test]
 async fn cat_file_bytes_preserves_binary_blob() {
     let (_tmp, repo) = make_repo_with_commit().await;
     // Bytes that are not valid UTF-8 (and include a NUL): lossy decoding would
