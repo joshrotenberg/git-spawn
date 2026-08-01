@@ -6,7 +6,7 @@ use git_spawn::command::{
     interpret_trailers::{TrailerIfExists, TrailerIfMissing, TrailerWhere},
     maintenance::{MaintenanceSchedule, MaintenanceTask},
     reset::ResetMode,
-    stash::{StashAction, StashCommand},
+    stash::StashCommand,
     status::StatusFormat,
 };
 use git_spawn::*;
@@ -261,10 +261,7 @@ fn stash_push_with_message() {
 
 #[test]
 fn stash_list_action() {
-    let c = StashCommand {
-        executor: Default::default(),
-        action: StashAction::List,
-    };
+    let c = StashCommand::list();
     assert_eq!(args_of(&c), vec!["stash", "list"]);
 }
 

@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 /// Builder for `git branch`.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct BranchCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

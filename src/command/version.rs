@@ -18,6 +18,7 @@ use async_trait::async_trait;
 /// turns the version line into a typed
 /// [`GitVersion`](crate::parse::GitVersion).
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct VersionCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

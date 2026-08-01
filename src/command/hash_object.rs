@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 /// Builder for `git hash-object`.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct HashObjectCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

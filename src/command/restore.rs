@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 /// Builder for `git restore`.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct RestoreCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

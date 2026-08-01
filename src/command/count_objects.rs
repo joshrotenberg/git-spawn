@@ -25,6 +25,7 @@ use async_trait::async_trait;
 /// [`parse_count_objects_terse`](Self::parse_count_objects_terse) reads the
 /// default one-line form.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct CountObjectsCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

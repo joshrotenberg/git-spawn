@@ -58,6 +58,7 @@ use std::path::PathBuf;
 
 /// Actions supported by `git notes`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum NotesAction {
     /// `git notes add [-f] [--allow-empty] [-m <msg> | -F <file>] [<object>]`.
     Add {
@@ -128,6 +129,7 @@ pub enum NotesAction {
 
 /// Builder for `git notes`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct NotesCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

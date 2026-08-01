@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 /// Actions supported by `git sparse-checkout`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum SparseCheckoutAction {
     /// `git sparse-checkout init [--[no-]cone] [--[no-]sparse-index]`: enable
     /// sparse checkout with a pattern set matching only the top-level files.
@@ -62,6 +63,7 @@ pub enum SparseCheckoutAction {
 /// Output is left as a [`CommandOutput`]: `list` writes one pattern per line
 /// and the other actions write nothing on stdout.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct SparseCheckoutCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

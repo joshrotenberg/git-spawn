@@ -10,6 +10,7 @@ use std::path::PathBuf;
 /// [`Other`](Self::Other) passes a name through verbatim, so a task added by a
 /// newer git can be requested without waiting for a variant here.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum MaintenanceTask {
     /// `commit-graph`: write and verify the commit-graph file.
     CommitGraph,
@@ -45,6 +46,7 @@ impl MaintenanceTask {
 
 /// The frequency `--schedule=<frequency>` selects tasks by.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum MaintenanceSchedule {
     /// `hourly`.
     Hourly,
@@ -71,6 +73,7 @@ impl MaintenanceSchedule {
 /// git rejects `--auto` and `--schedule=<frequency>` together, so the two live
 /// in one field and cannot contradict each other.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum MaintenanceTrigger {
     /// `--auto`: only run tasks whose auto-condition is met.
     Auto,
@@ -80,6 +83,7 @@ pub enum MaintenanceTrigger {
 
 /// Actions supported by `git maintenance`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum MaintenanceAction {
     /// `git maintenance run [--auto | --schedule=<f>] [--quiet] [--task=<t>]...`.
     Run {
@@ -121,6 +125,7 @@ pub enum MaintenanceAction {
 /// Output is left as a [`CommandOutput`]: `run` reports progress on stderr and
 /// the registration actions print nothing on success.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct MaintenanceCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

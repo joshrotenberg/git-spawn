@@ -19,6 +19,7 @@ use async_trait::async_trait;
 /// Output is left as a [`CommandOutput`]; [`parse_entries`](Self::parse_entries)
 /// turns it into typed [`CherryEntry`](crate::parse::CherryEntry) values.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct CherryCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

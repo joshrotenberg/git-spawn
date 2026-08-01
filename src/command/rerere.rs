@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 /// Actions supported by `git rerere`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum RerereAction {
     /// `git rerere status`: list the paths with a recorded preimage.
     Status,
@@ -43,6 +44,7 @@ pub enum RerereAction {
 /// `diff` writes a unified diff, and the maintenance actions write nothing on
 /// stdout.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct RerereCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

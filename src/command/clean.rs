@@ -23,6 +23,7 @@ use async_trait::async_trait;
 /// Output is left as a [`CommandOutput`]; each affected path is reported on
 /// stdout as `Removing <path>`, or `Would remove <path>` under `-n`.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct CleanCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

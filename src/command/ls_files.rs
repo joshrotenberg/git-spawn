@@ -20,6 +20,7 @@ use async_trait::async_trait;
 
 /// Builder for `git ls-files`.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct LsFilesCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

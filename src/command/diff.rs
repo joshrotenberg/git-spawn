@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 /// Builder for `git diff`.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct DiffCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

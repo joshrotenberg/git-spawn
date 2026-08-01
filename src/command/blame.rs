@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 /// Machine-readable output formats for `git blame`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum BlameFormat {
     /// `--porcelain`: commit metadata written once per commit.
     Porcelain,
@@ -27,6 +28,7 @@ pub enum BlameFormat {
 ///
 /// Output is left as a [`CommandOutput`].
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct BlameCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

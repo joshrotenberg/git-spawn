@@ -18,6 +18,7 @@ use async_trait::async_trait;
 /// negative verdict. The captured `stderr` carries git's explanation (the
 /// verification report is written to stderr, not stdout).
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct VerifyTagCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

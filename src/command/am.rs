@@ -18,6 +18,7 @@ use std::path::PathBuf;
 /// [`skip`](Self::skip) and [`abort`](Self::abort) — drive that state, and each
 /// one replaces the rest of the argument vector.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct AmCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

@@ -10,6 +10,7 @@ use std::path::PathBuf;
 /// `--quiet` and `--progress` set the same progress level inside git, so they
 /// share one field here and the last call wins.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum BundleProgress {
     /// `--quiet`: suppress the progress meter.
     Quiet,
@@ -19,6 +20,7 @@ pub enum BundleProgress {
 
 /// Actions supported by `git bundle`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum BundleAction {
     /// `git bundle create [--quiet | --progress] [--version=<n>] <file> <rev-list-args>`.
     Create {
@@ -73,6 +75,7 @@ pub enum BundleAction {
 /// stderr, while `list-heads` and `unbundle` write `<sha> <ref>` lines to
 /// stdout.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct BundleCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 /// Builder for `git merge`.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct MergeCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

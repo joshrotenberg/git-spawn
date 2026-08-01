@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 /// Builder for `git switch`.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct SwitchCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

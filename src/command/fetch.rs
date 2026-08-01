@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 /// Builder for `git fetch`.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct FetchCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 /// Porcelain v2 formats and friends.
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub enum StatusFormat {
     /// Short `-s` format.
     Short,
@@ -19,6 +20,7 @@ pub enum StatusFormat {
 
 /// Builder for `git status`.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct StatusCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 /// Builder for `git pull`.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct PullCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

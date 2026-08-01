@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 /// Where a new trailer is placed relative to the existing ones (`--where`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum TrailerWhere {
     /// `after`: directly after the last matching trailer.
     After,
@@ -33,6 +34,7 @@ impl TrailerWhere {
 /// What to do when a trailer with the same token is already present
 /// (`--if-exists`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum TrailerIfExists {
     /// `addIfDifferent`: add unless an identical trailer is already there.
     AddIfDifferent,
@@ -61,6 +63,7 @@ impl TrailerIfExists {
 
 /// What to do when no trailer with the same token is present (`--if-missing`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum TrailerIfMissing {
     /// `doNothing`: leave the message unchanged.
     DoNothing,
@@ -88,6 +91,7 @@ impl TrailerIfMissing {
 /// By default git writes the resulting message to stdout; [`in_place`](Self::in_place)
 /// rewrites the input file instead.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct InterpretTrailersCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

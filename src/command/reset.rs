@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 /// Reset mode.
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub enum ResetMode {
     /// `--soft`: move HEAD, leave index and working tree.
     Soft,
@@ -21,6 +22,7 @@ pub enum ResetMode {
 
 /// Builder for `git reset`.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct ResetCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

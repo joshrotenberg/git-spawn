@@ -12,6 +12,7 @@ use std::path::PathBuf;
 /// it replaces the path listing with the patch bodies themselves, which does not
 /// fit this command's [`Output`](GitCommand::Output).
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct FormatPatchCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

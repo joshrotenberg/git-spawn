@@ -21,6 +21,7 @@ use async_trait::async_trait;
 /// takes no other arguments, so setting one makes the command a bare
 /// `git revert --<action>`.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct RevertCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

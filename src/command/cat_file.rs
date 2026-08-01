@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 /// Mode of operation for `cat-file`.
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub enum CatFileMode {
     /// `-t`: print the object's type.
     Type,
@@ -19,6 +20,7 @@ pub enum CatFileMode {
 
 /// Builder for `git cat-file`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct CatFileCommand {
     /// Shared executor.
     pub executor: CommandExecutor,
