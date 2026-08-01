@@ -3056,6 +3056,12 @@ async fn check_ref_format_rejects_invalid_builder_shapes() {
         Err(Error::InvalidConfig { .. })
     ));
 
+    let option_shaped = CheckRefFormatCommand::new("--help");
+    assert!(matches!(
+        option_shaped.execute().await,
+        Err(Error::InvalidConfig { .. })
+    ));
+
     let mut branch = CheckRefFormatCommand::branch("topic");
     branch.normalize();
     assert!(matches!(
