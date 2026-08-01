@@ -879,8 +879,10 @@ impl WindowsJob {
 
         // Descendants inherit job membership. Assignment happens immediately
         // after spawn, before this executor performs any other async work.
-        let assigned =
-            unsafe { AssignProcessToJobObject(handle.as_raw_handle(), child.as_raw_handle()) };
+        let process = child.raw_handle().ok_or_else(|| {
+            std::io::Error::other("spawned git process has no Windows process handle")
+        })?;
+        let assigned = unsafe { AssignProcessToJobObject(handle.as_raw_handle(), process) };
         if assigned == 0 {
             return Err(std::io::Error::last_os_error());
         }
