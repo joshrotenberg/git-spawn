@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 /// Actions supported by `git bisect`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum BisectAction {
     /// `git bisect start [<bad>] [<good>…]`.
     Start {
@@ -33,6 +34,7 @@ pub enum BisectAction {
 
 /// Builder for `git bisect`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct BisectCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

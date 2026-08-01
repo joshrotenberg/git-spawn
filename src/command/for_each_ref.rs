@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 /// Builder for `git for-each-ref`.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct ForEachRefCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

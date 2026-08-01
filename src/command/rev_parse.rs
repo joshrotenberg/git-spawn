@@ -23,6 +23,7 @@ use async_trait::async_trait;
 
 /// Builder for `git rev-parse`.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct RevParseCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

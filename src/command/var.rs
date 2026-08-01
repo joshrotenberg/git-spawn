@@ -28,6 +28,7 @@ use async_trait::async_trait;
 /// value under [`get`](Self::get) and newline-separated `key=value` lines under
 /// [`list`](Self::list).
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct VarCommand {
     /// Shared executor.
     pub executor: CommandExecutor,
@@ -59,7 +60,7 @@ impl VarCommand {
 
     /// Check that exactly one of a name and `-l` is selected.
     ///
-    /// The constructors pick one, but the fields are public and can be set
+    /// The constructors pick one, but the public fields can be adjusted
     /// afterwards, so both and neither are reachable.
     fn validate(&self) -> Result<()> {
         match (&self.name, self.list) {

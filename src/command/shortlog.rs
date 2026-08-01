@@ -18,6 +18,7 @@ use async_trait::async_trait;
 ///
 /// Output is left as a [`CommandOutput`].
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct ShortlogCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

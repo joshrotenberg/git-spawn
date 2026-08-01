@@ -20,6 +20,7 @@ use async_trait::async_trait;
 /// [`dangling`]: FsckCommand::dangling
 /// [`no_dangling`]: FsckCommand::no_dangling
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct FsckCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

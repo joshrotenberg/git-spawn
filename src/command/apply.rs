@@ -11,6 +11,7 @@ use std::path::PathBuf;
 /// the command line; the shared [`CommandExecutor`] also supports piped bytes
 /// through [`CommandExecutor::stdin_bytes`].
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct ApplyCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

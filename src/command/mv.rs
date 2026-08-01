@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 /// Builder for `git mv`.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct MvCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

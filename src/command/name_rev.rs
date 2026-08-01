@@ -23,6 +23,7 @@ use async_trait::async_trait;
 /// `--all`, `--annotate-stdin`, `--no-undefined`, `--always` and `--exclude`
 /// are left to the documented raw-argument escape hatch.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct NameRevCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

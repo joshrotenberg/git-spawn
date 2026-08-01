@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 /// Actions supported by `git reflog`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum ReflogAction {
     /// `git reflog [show] [<ref>]`.
     Show {
@@ -45,6 +46,7 @@ pub enum ReflogAction {
 
 /// Builder for `git reflog`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct ReflogCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

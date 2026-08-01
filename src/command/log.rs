@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 /// Builder for `git log`.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct LogCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

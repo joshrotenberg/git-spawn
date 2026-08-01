@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 /// Builder for `git ls-tree`.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct LsTreeCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

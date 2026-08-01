@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 /// Builder for `git rebase`.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct RebaseCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

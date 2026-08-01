@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 /// Builder for `git update-ref`.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct UpdateRefCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

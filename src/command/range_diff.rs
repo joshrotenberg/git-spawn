@@ -25,6 +25,7 @@ use async_trait::async_trait;
 /// Output is left as a [`CommandOutput`]: the report is a diff of diffs, and
 /// this crate does not model it as typed values.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct RangeDiffCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

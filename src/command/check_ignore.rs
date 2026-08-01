@@ -22,6 +22,7 @@ use async_trait::async_trait;
 /// the shared executor can pipe bytes with [`GitCommand::stdin_bytes`]. Paths
 /// are passed after `--`, so names beginning with a dash remain unambiguous.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct CheckIgnoreCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

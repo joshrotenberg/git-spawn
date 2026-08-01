@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 /// Actions supported by `git remote`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum RemoteAction {
     /// List remotes (`git remote` or `git remote -v`).
     List {
@@ -43,6 +44,7 @@ pub enum RemoteAction {
 
 /// Builder for `git remote`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct RemoteCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

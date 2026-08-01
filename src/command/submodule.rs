@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 /// Actions supported by `git submodule`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum SubmoduleAction {
     /// `git submodule add <url> [<path>]`.
     Add {
@@ -73,6 +74,7 @@ pub enum SubmoduleAction {
 
 /// Builder for `git submodule`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct SubmoduleCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

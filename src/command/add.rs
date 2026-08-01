@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 /// Builder for `git add`.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct AddCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

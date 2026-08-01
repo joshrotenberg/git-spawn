@@ -48,6 +48,7 @@ const KEY_TAG_SIGN: &str = "tag.gpgsign";
 /// The signature format `git` uses, as configured by `gpg.format`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
 pub enum SignatureFormat {
     /// OpenPGP / GnuPG (`openpgp`), git's default when unset.
     OpenPgp,

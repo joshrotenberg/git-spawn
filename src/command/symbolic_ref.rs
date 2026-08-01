@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 /// Actions supported by `git symbolic-ref`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum SymbolicRefAction {
     /// Read the target of `ref` (e.g. `HEAD` -> `refs/heads/main`).
     Read {
@@ -34,6 +35,7 @@ pub enum SymbolicRefAction {
 
 /// Builder for `git symbolic-ref`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct SymbolicRefCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

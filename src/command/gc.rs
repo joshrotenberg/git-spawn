@@ -9,6 +9,7 @@ use async_trait::async_trait;
 /// `--prune=<date>` and `--no-prune` are mutually exclusive, so they share one
 /// field rather than two booleans that could contradict each other.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum GcPrune {
     /// `--prune=<date>`: prune loose objects older than `<date>`. Use
     /// `"now"` to prune regardless of age.
@@ -30,6 +31,7 @@ pub enum GcPrune {
 /// [`prune`]: GcCommand::prune
 /// [`no_prune`]: GcCommand::no_prune
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct GcCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

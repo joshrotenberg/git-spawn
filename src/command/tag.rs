@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 /// Builder for `git tag`.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct TagCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

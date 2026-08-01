@@ -8,6 +8,7 @@ use std::path::PathBuf;
 
 /// Builder for `git clone`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct CloneCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

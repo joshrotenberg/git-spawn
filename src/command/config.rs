@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 /// Configuration scope.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ConfigScope {
     /// `--local` (default for a repo).
     Local,
@@ -19,6 +20,7 @@ pub enum ConfigScope {
 
 /// Actions supported by `git config`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum ConfigAction {
     /// Get a value.
     Get {
@@ -60,6 +62,7 @@ pub enum ConfigAction {
 
 /// Builder for `git config`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct ConfigCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

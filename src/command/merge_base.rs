@@ -36,6 +36,7 @@ use async_trait::async_trait;
 /// `--octopus` and `--independent` are left to the documented raw-argument
 /// escape hatch.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct MergeBaseCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 /// Builder for `git init`.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct InitCommand {
     /// Shared executor (args, cwd, env, timeout).
     pub executor: CommandExecutor,

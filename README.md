@@ -85,6 +85,13 @@ Rust); building a merge engine or git server -> `gix`.
 
 ### Repository handle
 
+Command builders must be created through their documented constructors or a
+`Repository` accessor and configured with fluent methods. Their fields remain
+public for inspection and direct adjustment, but the structs are
+non-exhaustive, so constructing them with struct literals outside this crate is
+not supported. Command option and action enums are likewise non-exhaustive;
+include a wildcard arm when matching them.
+
 ```rust
 use git_spawn::{GitCommand, Repository};
 

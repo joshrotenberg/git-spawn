@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 /// Actions supported by `git stash`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum StashAction {
     /// `git stash push [-m <msg>]`.
     Push {
@@ -32,6 +33,7 @@ pub enum StashAction {
 
 /// Builder for `git stash`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct StashCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

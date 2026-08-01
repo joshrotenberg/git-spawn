@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 /// Actions supported by `git worktree`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum WorktreeAction {
     /// `git worktree add [-b <branch>] [--detach] [--force] <path> [<commit-ish>]`.
     Add {
@@ -65,6 +66,7 @@ pub enum WorktreeAction {
 
 /// Builder for `git worktree`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct WorktreeCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

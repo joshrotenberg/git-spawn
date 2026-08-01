@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 /// Builder for `git commit`.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct CommitCommand {
     /// Shared executor.
     pub executor: CommandExecutor,

@@ -19,6 +19,39 @@
 //! spawns `git` via [`tokio::process::Command`], captures stdout/stderr, and
 //! maps non-zero exits to [`Error::CommandFailed`] by default.
 //!
+//! # Constructing commands
+//!
+//! Command builders are `#[non_exhaustive]`: their public fields may be read
+//! and updated, but downstream crates cannot construct them with struct
+//! literals. This lets a command gain support for another git option without
+//! making that addition a breaking change. Create commands through their
+//! documented constructors or a [`Repository`](crate::Repository) accessor,
+//! then configure them with fluent builder methods:
+//!
+//! ```no_run
+//! # use git_spawn::{GitCommand, Repository};
+//! # async fn example() -> git_spawn::Result<()> {
+//! let repo = Repository::open("/repo")?;
+//! repo.add().all().path("src").execute().await?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! Struct-literal construction is intentionally unsupported:
+//!
+//! ```compile_fail
+//! use git_spawn::AddCommand;
+//!
+//! let command = AddCommand {
+//!     all: true,
+//!     ..AddCommand::default()
+//! };
+//! ```
+//!
+//! Public command option and action enums are also non-exhaustive because git
+//! can add formats, modes, and actions. Downstream matches must include a
+//! wildcard arm.
+//!
 //! # The two-tier output model
 //!
 //! Commands with unstructured output — porcelain that varies by git version,

@@ -11,6 +11,7 @@ use std::path::PathBuf;
 /// passes a name through verbatim, so a format registered through
 /// `tar.<fmt>.command` config can be requested without a variant here.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ArchiveFormat {
     /// `tar`: an uncompressed tar archive. git's default when the output file
     /// name carries no recognized extension.
@@ -56,6 +57,7 @@ impl ArchiveFormat {
 /// is set, git infers the format from the `output` file name's extension and
 /// falls back to `tar`.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct ArchiveCommand {
     /// Shared executor.
     pub executor: CommandExecutor,
