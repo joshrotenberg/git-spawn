@@ -104,13 +104,35 @@ async fn cat_file_type_checked_commit() {
 
 #[tokio::test]
 async fn cat_file_type_checked_rejects_empty_values() {
-    let empty_type = CatFileCommand::type_checked("", "HEAD");
-    let err = empty_type.execute().await.unwrap_err();
-    assert!(err.to_string().contains("non-empty expected type"));
+    for empty_type in [
+        CatFileCommand::type_checked("", "HEAD").execute().await,
+        CatFileCommand::type_checked("", "HEAD")
+            .execute_raw()
+            .await
+            .map(|_| String::new()),
+        CatFileCommand::type_checked("", "HEAD")
+            .execute_raw_unchecked()
+            .await
+            .map(|_| String::new()),
+    ] {
+        let err = empty_type.unwrap_err();
+        assert!(err.to_string().contains("non-empty expected type"));
+    }
 
-    let empty_object = CatFileCommand::type_checked("commit", "");
-    let err = empty_object.execute().await.unwrap_err();
-    assert!(err.to_string().contains("non-empty object"));
+    for empty_object in [
+        CatFileCommand::type_checked("commit", "").execute().await,
+        CatFileCommand::type_checked("commit", "")
+            .execute_raw()
+            .await
+            .map(|_| String::new()),
+        CatFileCommand::type_checked("commit", "")
+            .execute_raw_unchecked()
+            .await
+            .map(|_| String::new()),
+    ] {
+        let err = empty_object.unwrap_err();
+        assert!(err.to_string().contains("non-empty object"));
+    }
 }
 
 #[tokio::test]

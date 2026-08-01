@@ -1,6 +1,6 @@
 //! `git cat-file` — provide content or type/size information for repository objects.
 
-use crate::command::{CommandExecutor, GitCommand};
+use crate::command::{CommandExecutor, CommandOutput, GitCommand};
 use crate::error::{Error, Result};
 use async_trait::async_trait;
 
@@ -144,5 +144,17 @@ impl GitCommand for CatFileCommand {
         self.validate()?;
         let out = self.execute_raw().await?;
         Ok(out.stdout_trimmed())
+    }
+
+    async fn execute_raw(&self) -> Result<CommandOutput> {
+        self.validate()?;
+        let args = self.build_command_os_args();
+        self.get_executor().execute_command_os(args).await
+    }
+
+    async fn execute_raw_unchecked(&self) -> Result<CommandOutput> {
+        self.validate()?;
+        let args = self.build_command_os_args();
+        self.get_executor().execute_command_os_unchecked(args).await
     }
 }
