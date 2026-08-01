@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Commands must now be created through their documented constructors or
   `Repository` accessors instead of struct literals. Existing constructor and
   fluent-builder usage is unchanged. [**breaking**]
+
+### Documentation
+
+- Scrub the README and rustdoc for the next `0.3` release: inventory every
+  command builder, typed parser and required output format, workflow helper,
+  and Cargo feature; update installation snippets, requirements, platform
+  limitations, examples, and the Git-library comparison.
+
 ## [0.2.1](https://github.com/joshrotenberg/git-spawn/compare/v0.2.0...v0.2.1) - 2026-06-08
 
 

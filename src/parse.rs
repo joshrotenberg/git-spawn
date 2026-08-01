@@ -1,11 +1,12 @@
 //! Typed parsers for common git outputs.
 //!
 //! Enabled by the `parse` feature (on by default). Each parser takes a raw
-//! [`&str`](str) of git output (typically captured via
-//! [`CommandOutput::stdout`](crate::CommandOutput)) and returns structured
-//! entries. Parsers are deliberately permissive: unexpected fields are
-//! preserved in raw form rather than erroring, so callers can handle them
-//! downstream.
+//! git output and returns structured entries. Most accept [`&str`](str)
+//! (typically obtained with [`CommandOutput::stdout_str`](crate::CommandOutput::stdout_str));
+//! parsers that need both streams accept [`CommandOutput`](crate::CommandOutput).
+//! See each parser's module documentation for the exact Git flags it expects.
+//! Parsers favor useful partial results where possible, while fixed-token
+//! formats report malformed records as parse errors.
 //!
 //! # Modules
 //!
