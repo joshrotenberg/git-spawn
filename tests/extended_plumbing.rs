@@ -137,6 +137,18 @@ async fn merge_tree_returns_conflicted_output() {
     assert_eq!(nul_result.tree.len(), 40);
     assert_eq!(nul_result.conflicts, ["file.txt"]);
 
+    let explicit_base = repo
+        .merge_tree()
+        .write_tree()
+        .base("HEAD~1")
+        .ours("ours")
+        .theirs("main")
+        .execute()
+        .await
+        .unwrap();
+    assert!(!explicit_base.clean);
+    assert_eq!(explicit_base.conflicts, ["file.txt"]);
+
     let mut invalid = repo.merge_tree();
     invalid.write_tree().ours("missing").theirs("main");
     assert!(invalid.execute().await.is_err());

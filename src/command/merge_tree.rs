@@ -22,7 +22,10 @@ pub struct MergeTreeResult {
 pub struct MergeTreeCommand {
     /// Shared executor.
     pub executor: CommandExecutor,
-    /// Explicit merge base for the legacy three-tree form.
+    /// Explicit merge base.
+    ///
+    /// The typed write-tree form renders this as `--merge-base=<tree-ish>`;
+    /// the legacy three-tree form renders it as the first positional value.
     pub base: Option<String>,
     /// First tree or branch.
     pub ours: Option<String>,
@@ -97,7 +100,11 @@ impl GitCommand for MergeTreeCommand {
             a.push("--messages".into())
         }
         if let Some(v) = &self.base {
-            a.push(v.clone())
+            if self.write_tree {
+                a.push(format!("--merge-base={v}"));
+            } else {
+                a.push(v.clone());
+            }
         }
         if let Some(v) = &self.ours {
             a.push(v.clone())

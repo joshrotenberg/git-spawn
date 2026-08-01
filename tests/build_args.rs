@@ -97,6 +97,7 @@ fn extended_plumbing_command_args() {
     merge
         .write_tree()
         .null_terminate()
+        .base("base")
         .ours("main")
         .theirs("topic");
     assert_eq!(
@@ -106,6 +107,7 @@ fn extended_plumbing_command_args() {
             "--write-tree",
             "--name-only",
             "-z",
+            "--merge-base=base",
             "main",
             "topic"
         ]
