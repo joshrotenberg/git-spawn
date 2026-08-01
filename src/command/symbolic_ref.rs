@@ -12,6 +12,8 @@ pub enum SymbolicRefAction {
     Read {
         /// Ref name to read.
         name: String,
+        /// `--quiet` suppresses errors when the ref is not symbolic.
+        quiet: bool,
         /// `--short` shows the short form (`main`).
         short: bool,
     },
@@ -50,6 +52,7 @@ impl SymbolicRefCommand {
             executor: CommandExecutor::default(),
             action: SymbolicRefAction::Read {
                 name: name.into(),
+                quiet: false,
                 short: false,
             },
         }
@@ -94,10 +97,13 @@ impl SymbolicRefCommand {
         }
     }
 
-    /// `-q` (only for [`delete`](Self::delete)).
+    /// Suppress errors for [`read`](Self::read) and [`delete`](Self::delete).
     pub fn quiet(&mut self) -> &mut Self {
-        if let SymbolicRefAction::Delete { quiet, .. } = &mut self.action {
-            *quiet = true;
+        match &mut self.action {
+            SymbolicRefAction::Read { quiet, .. } | SymbolicRefAction::Delete { quiet, .. } => {
+                *quiet = true
+            }
+            SymbolicRefAction::Set { .. } => {}
         }
         self
     }
@@ -119,7 +125,10 @@ impl GitCommand for SymbolicRefCommand {
     fn build_command_args(&self) -> Vec<String> {
         let mut args = vec!["symbolic-ref".to_string()];
         match &self.action {
-            SymbolicRefAction::Read { name, short } => {
+            SymbolicRefAction::Read { name, quiet, short } => {
+                if *quiet {
+                    args.push("--quiet".into());
+                }
                 if *short {
                     args.push("--short".into());
                 }

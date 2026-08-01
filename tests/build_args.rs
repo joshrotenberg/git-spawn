@@ -484,10 +484,20 @@ fn show_ref_heads_pattern() {
 }
 
 #[test]
-fn symbolic_ref_read_head() {
+fn symbolic_ref_quiet_read_head() {
     let mut c = SymbolicRefCommand::read("HEAD");
-    c.short();
-    assert_eq!(args_of(&c), vec!["symbolic-ref", "--short", "HEAD"]);
+    c.quiet();
+    assert_eq!(args_of(&c), vec!["symbolic-ref", "--quiet", "HEAD"]);
+}
+
+#[test]
+fn symbolic_ref_quiet_short_read_head() {
+    let mut c = SymbolicRefCommand::read("HEAD");
+    c.quiet().short();
+    assert_eq!(
+        args_of(&c),
+        vec!["symbolic-ref", "--quiet", "--short", "HEAD"]
+    );
 }
 
 #[test]
