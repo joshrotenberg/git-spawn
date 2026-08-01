@@ -40,12 +40,13 @@
 //! Repository accessors are provided for commands whose meaning depends on a
 //! repository or working tree. Commands that are inherently standalone stay
 //! available through their direct constructors: [`VersionCommand`](version::VersionCommand)
-//! inspects the installed Git, [`LsRemoteCommand`](ls_remote::LsRemoteCommand)
-//! queries a remote URL, and
+//! inspects the installed Git, and
 //! [`CheckRefFormatCommand`](check_ref_format::CheckRefFormatCommand) validates
 //! a ref name without accessing a repository. They intentionally have no
-//! [`Repository`](crate::Repository) accessor; callers can still set an
-//! explicit directory with [`GitCommand::current_dir`] when needed.
+//! [`Repository`](crate::Repository) accessor. Hybrid commands can support
+//! both forms: [`Repository::ls_remote`](crate::Repository::ls_remote) scopes
+//! configured-remote lookup, while [`LsRemoteCommand::remote`](ls_remote::LsRemoteCommand::remote)
+//! can query a standalone URL or path directly.
 //!
 //! Struct-literal construction is intentionally unsupported:
 //!

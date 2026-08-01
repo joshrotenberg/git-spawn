@@ -118,10 +118,10 @@ working directory.
 
 Accessors cover commands whose behavior depends on a repository or working
 tree. Standalone commands use their direct constructors instead: `VersionCommand`
-inspects the installed Git, `LsRemoteCommand` queries a remote URL, and
-`CheckRefFormatCommand` validates a ref name without accessing a repository.
-Those commands can still be given an explicit working directory with
-`.current_dir()`.
+inspects the installed Git, while `CheckRefFormatCommand` validates a ref name
+without accessing a repository. Hybrid commands support both forms:
+`repo.ls_remote()` reads configured remotes from that repository, while
+`LsRemoteCommand::remote(...)` can query a standalone URL or path directly.
 
 ### Typed parsers
 

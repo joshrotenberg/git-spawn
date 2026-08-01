@@ -45,18 +45,19 @@ use crate::command::{
     for_each_ref::ForEachRefCommand, format_patch::FormatPatchCommand, fsck::FsckCommand,
     gc::GcCommand, grep::GrepCommand, hash_object::HashObjectCommand, init::InitCommand,
     interpret_trailers::InterpretTrailersCommand, log::LogCommand, ls_files::LsFilesCommand,
-    ls_tree::LsTreeCommand, maintenance::MaintenanceCommand, merge::MergeCommand,
-    merge_base::MergeBaseCommand, merge_file::MergeFileCommand, merge_tree::MergeTreeCommand,
-    mktree::MkTreeCommand, mv::MvCommand, name_rev::NameRevCommand, notes::NotesCommand,
-    pull::PullCommand, push::PushCommand, range_diff::RangeDiffCommand, read_tree::ReadTreeCommand,
-    rebase::RebaseCommand, reflog::ReflogCommand, remote::RemoteCommand, rerere::RerereCommand,
-    reset::ResetCommand, restore::RestoreCommand, rev_list::RevListCommand,
-    rev_parse::RevParseCommand, revert::RevertCommand, rm::RmCommand, shortlog::ShortlogCommand,
-    show::ShowCommand, show_ref::ShowRefCommand, sparse_checkout::SparseCheckoutCommand,
-    stash::StashCommand, status::StatusCommand, submodule::SubmoduleCommand, switch::SwitchCommand,
-    symbolic_ref::SymbolicRefCommand, tag::TagCommand, update_index::UpdateIndexCommand,
-    update_ref::UpdateRefCommand, var::VarCommand, verify_commit::VerifyCommitCommand,
-    verify_tag::VerifyTagCommand, worktree::WorktreeCommand, write_tree::WriteTreeCommand,
+    ls_remote::LsRemoteCommand, ls_tree::LsTreeCommand, maintenance::MaintenanceCommand,
+    merge::MergeCommand, merge_base::MergeBaseCommand, merge_file::MergeFileCommand,
+    merge_tree::MergeTreeCommand, mktree::MkTreeCommand, mv::MvCommand, name_rev::NameRevCommand,
+    notes::NotesCommand, pull::PullCommand, push::PushCommand, range_diff::RangeDiffCommand,
+    read_tree::ReadTreeCommand, rebase::RebaseCommand, reflog::ReflogCommand,
+    remote::RemoteCommand, rerere::RerereCommand, reset::ResetCommand, restore::RestoreCommand,
+    rev_list::RevListCommand, rev_parse::RevParseCommand, revert::RevertCommand, rm::RmCommand,
+    shortlog::ShortlogCommand, show::ShowCommand, show_ref::ShowRefCommand,
+    sparse_checkout::SparseCheckoutCommand, stash::StashCommand, status::StatusCommand,
+    submodule::SubmoduleCommand, switch::SwitchCommand, symbolic_ref::SymbolicRefCommand,
+    tag::TagCommand, update_index::UpdateIndexCommand, update_ref::UpdateRefCommand,
+    var::VarCommand, verify_commit::VerifyCommitCommand, verify_tag::VerifyTagCommand,
+    worktree::WorktreeCommand, write_tree::WriteTreeCommand,
 };
 use crate::error::{Error, Result};
 use std::path::{Path, PathBuf};
@@ -529,6 +530,15 @@ impl Repository {
         self.scoped(InterpretTrailersCommand::new())
     }
 
+    /// Build an [`LsRemoteCommand`] scoped to this repository.
+    ///
+    /// The default command reads the current branch's configured remote. Use
+    /// [`LsRemoteCommand::remote`] directly for a standalone URL or path.
+    #[must_use]
+    pub fn ls_remote(&self) -> LsRemoteCommand {
+        self.scoped(LsRemoteCommand::new())
+    }
+
     /// Scope a [`MaintenanceCommand`] action to this repository.
     #[must_use]
     pub fn maintenance(&self, action: MaintenanceCommand) -> MaintenanceCommand {
@@ -723,6 +733,7 @@ mod tests {
         assert_scoped!(repo.fsck(), ["fsck"]);
         assert_scoped!(repo.gc(), ["gc"]);
         assert_scoped!(repo.interpret_trailers(), ["interpret-trailers"]);
+        assert_scoped!(repo.ls_remote(), ["ls-remote"]);
         assert_scoped!(
             repo.maintenance(MaintenanceCommand::run()),
             ["maintenance", "run"]
