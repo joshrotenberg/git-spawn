@@ -116,6 +116,14 @@ async fn demo() -> git_spawn::Result<()> {
 `.commit()`, `.log()`, ...) return commands pre-scoped to the repo's
 working directory.
 
+Accessors cover commands whose behavior depends on a repository or working
+tree. Standalone commands use their direct constructors instead: `VersionCommand`
+inspects the installed Git, `LsRemoteCommand` queries a remote URL, and
+`InterpretTrailersCommand` transforms message text or files. Those commands
+and `CheckRefFormatCommand`, which validates a ref name without accessing a
+repository, can still be given an explicit working directory with
+`.current_dir()`.
+
 ### Typed parsers
 
 ```rust
