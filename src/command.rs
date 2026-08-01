@@ -1517,11 +1517,28 @@ mod tests {
             .expect("git alias should finish before its configured timeout");
         assert!(output.success);
 
-        let grandchild: u32 = std::fs::read_to_string(&pidfile)
-            .expect("successful alias should have written the grandchild pid")
-            .trim()
-            .parse()
-            .expect("pidfile should contain a pid");
+        let pidfile_deadline = Instant::now() + Duration::from_secs(5);
+        let mut last_pidfile_error;
+        let grandchild: u32 = loop {
+            match std::fs::read_to_string(&pidfile) {
+                Ok(contents) => match contents.trim().parse() {
+                    Ok(pid) => break pid,
+                    Err(error) => {
+                        last_pidfile_error =
+                            format!("could not parse contents {contents:?} as a pid: {error}");
+                    }
+                },
+                Err(error) => {
+                    last_pidfile_error = format!("could not read pidfile: {error}");
+                }
+            }
+            assert!(
+                Instant::now() < pidfile_deadline,
+                "detached helper did not publish a valid pidfile {} within 5 seconds; last error: {last_pidfile_error}",
+                pidfile.display()
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        };
         // SAFETY: OpenProcess either returns a handle owned below or null.
         let process = unsafe {
             OpenProcess(
