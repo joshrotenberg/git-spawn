@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -142,3 +143,23 @@ jobs:
 
       - name: Check documentation
         run: cargo doc --all-features --no-deps
+
+  required:
+    name: Required checks
+    if: ${{ always() }}
+    needs: [features, test, msrv, fmt, clippy, docs]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm every CI job passed
+        env:
+          FEATURES_RESULT: ${{ needs.features.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+          MSRV_RESULT: ${{ needs.msrv.result }}
+          FMT_RESULT: ${{ needs.fmt.result }}
+          CLIPPY_RESULT: ${{ needs.clippy.result }}
+          DOCS_RESULT: ${{ needs.docs.result }}
+        run: |
+          for result in "$FEATURES_RESULT" "$TEST_RESULT" "$MSRV_RESULT" \
+            "$FMT_RESULT" "$CLIPPY_RESULT" "$DOCS_RESULT"; do
+            test "$result" = success
+          done

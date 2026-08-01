@@ -9,6 +9,7 @@ name: PR Title
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened]
+  workflow_dispatch:
 
 permissions:
   pull-requests: read
@@ -18,6 +19,52 @@ jobs:
     name: Conventional PR title
     runs-on: ubuntu-latest
     steps:
-      - uses: amannn/action-semantic-pull-request@v6
+      - name: Validate pull request event
+        if: github.event_name == 'pull_request'
+        uses: amannn/action-semantic-pull-request@v6
+        with:
+          # Keep this list identical to the dispatched-title validator below.
+          types: |
+            build
+            chore
+            ci
+            docs
+            feat
+            fix
+            perf
+            refactor
+            revert
+            style
+            test
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate dispatched title
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          pull_requests=$(gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
+            --state open \
+            --head "$GITHUB_REF_NAME" \
+            --json headRefOid,title)
+          count=$(jq 'length' <<<"$pull_requests")
+          if [[ "$count" -ne 1 ]]; then
+            echo "Expected exactly one open pull request for $GITHUB_REF_NAME, found $count" >&2
+            exit 1
+          fi
+
+          head_sha=$(jq -r '.[0].headRefOid' <<<"$pull_requests")
+          if [[ "$head_sha" != "$GITHUB_SHA" ]]; then
+            echo "Pull request head $head_sha does not match dispatched revision $GITHUB_SHA" >&2
+            exit 1
+          fi
+
+          PR_TITLE=$(jq -r '.[0].title' <<<"$pull_requests")
+          if [[ ! "$PR_TITLE" =~ ^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^\)]+\))?(!)?:\ .+ ]]; then
+            echo "Pull request title is not a supported Conventional Commit subject: $PR_TITLE" >&2
+            exit 1
+          fi
