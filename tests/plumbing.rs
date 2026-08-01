@@ -3016,6 +3016,18 @@ async fn check_ref_format_validates_refs_and_branches() {
             .unwrap()
     );
     assert!(
+        !CheckRefFormatCommand::new("--help")
+            .is_valid()
+            .await
+            .unwrap()
+    );
+    assert!(
+        !CheckRefFormatCommand::new("-topic")
+            .is_valid()
+            .await
+            .unwrap()
+    );
+    assert!(
         CheckRefFormatCommand::branch("topic")
             .is_valid()
             .await

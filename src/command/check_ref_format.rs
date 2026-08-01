@@ -66,6 +66,13 @@ impl CheckRefFormatCommand {
     /// `--branch` mode with status 128, so both are ordinary negative results.
     pub async fn is_valid(&self) -> Result<bool> {
         self.validate()?;
+        // In full-ref mode Git parses a leading `-` as an option (for example,
+        // `--help` exits with usage status 129) rather than as the ref name we
+        // were asked to validate. Such names cannot be valid refs, so reject
+        // them without spawning Git and keep this method a reliable predicate.
+        if !self.branch && self.name.starts_with('-') {
+            return Ok(false);
+        }
         match self.execute_raw().await {
             Ok(_) => Ok(true),
             Err(Error::CommandFailed {
