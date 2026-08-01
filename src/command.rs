@@ -1348,25 +1348,21 @@ mod tests {
 
         let pidfile = path.join("grandchild.pid");
         let pidfile_arg = pidfile.to_string_lossy().replace('\\', "/");
-        let script = path.join("spawn-and-wait.ps1");
-        let script_arg = script.to_string_lossy().replace('\\', "/");
-        std::fs::write(
-            &script,
-            format!(
-                "$p = Start-Process ping.exe -ArgumentList '-t','127.0.0.1' -PassThru\nSet-Content -LiteralPath '{pidfile_arg}' -Value $p.Id\nWait-Process -Id $p.Id\n"
-            ),
-        )
-        .unwrap();
+        let helper = std::env::current_exe()
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
         std::fs::write(
             hooks_dir.join("pre-commit"),
             format!(
-                "#!/bin/sh\npowershell.exe -NoProfile -NonInteractive -File \"{script_arg}\"\n"
+                "#!/bin/sh\n\"{helper}\" command::tests::windows_detached_descendant_helper --ignored --exact\n"
             ),
         )
         .unwrap();
 
         let err = CommandExecutor::new()
             .cwd(path)
+            .with_env("GIT_SPAWN_WINDOWS_DESCENDANT_PIDFILE", pidfile_arg)
             .timeout(Duration::from_secs(5))
             .execute_command(vec!["commit".into(), "-m".into(), "x".into()])
             .await
@@ -1420,21 +1416,17 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let pidfile = dir.path().join("immediate-grandchild.pid");
         let pidfile_arg = pidfile.to_string_lossy().replace('\\', "/");
-        let script = dir.path().join("spawn-immediately-and-wait.ps1");
-        let script_arg = script.to_string_lossy().replace('\\', "/");
-        std::fs::write(
-            &script,
-            format!(
-                "$p = Start-Process ping.exe -ArgumentList '-t','127.0.0.1' -PassThru\nSet-Content -LiteralPath '{pidfile_arg}' -Value $p.Id\nWait-Process -Id $p.Id\n"
-            ),
-        )
-        .unwrap();
+        let helper = std::env::current_exe()
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
         let alias = format!(
-            "alias.spawn=!powershell.exe -NoProfile -NonInteractive -File \"{script_arg}\""
+            "alias.spawn=!\"{helper}\" command::tests::windows_detached_descendant_helper --ignored --exact"
         );
 
         let mut executor = CommandExecutor::new()
             .cwd(dir.path())
+            .with_env("GIT_SPAWN_WINDOWS_DESCENDANT_PIDFILE", pidfile_arg)
             .timeout(Duration::from_secs(5));
         executor.add_global_args([OsString::from("-c"), OsString::from(alias)]);
         let err = executor
