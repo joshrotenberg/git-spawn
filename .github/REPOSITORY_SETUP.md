@@ -1,30 +1,30 @@
 # Repository automation setup
 
-## Release pull-request token
+## Release pull-request checks
 
-The `Release` workflow must update release-plz pull requests with a credential
-other than the workflow-provided `GITHUB_TOKEN`. GitHub deliberately prevents
-most events created by `GITHUB_TOKEN` from starting another workflow, so those
-updates otherwise receive no CI checks.
+The `Release` workflow keeps release-plz on the repository-scoped
+`GITHUB_TOKEN`. GitHub prevents most events produced with that token from
+starting another unattended workflow, so merely updating the release branch
+does not reliably produce merge checks.
 
-Create the Actions secret `RELEASE_PLZ_TOKEN` using a fine-grained personal
-access token with access only to this repository and these permissions:
+After release-plz creates or updates its pull request, the workflow reads the
+action's structured `head_branch` and `number` outputs and explicitly dispatches
+`CI` and `PR Title` at that branch. GitHub treats `workflow_dispatch` as an
+exception to the recursion guard, and a dispatch at a branch uses that branch's
+latest commit as `GITHUB_SHA`. The resulting `Required checks` and
+`Conventional PR title` results therefore belong to the exact release candidate
+revision without a personal access token or stored GitHub App credential.
 
-- Contents: read and write
-- Pull requests: read and write
-
-The credential's owner must be allowed to push to the release-plz branch.
-Rotate the secret according to the repository's normal credential policy. A
-GitHub App is also suitable, but its short-lived installation token must be
-generated during each workflow run rather than stored as this secret. Do not
-replace the credential with `GITHUB_TOKEN`: the release PR will still update,
-but its `synchronize` event will not start CI.
+The workflow needs `actions: write` to create those dispatches. Its remaining
+permissions are unchanged: `contents: write` and `pull-requests: write` allow
+release-plz to maintain the release pull request. No additional Actions secret
+is required.
 
 ## Protecting `main`
 
-Import [rulesets/main.json](rulesets/main.json) as a repository ruleset (or
-create an equivalent ruleset under **Settings > Rules > Rulesets**). Keep it
-active and require both stable check names:
+Update the repository's existing `main` ruleset to match
+[rulesets/main.json](rulesets/main.json). Do not create a second overlapping
+ruleset. Keep it active and require both stable check names:
 
 - `Required checks` is the rollup for every matrix and non-matrix job in
   `ci.yml`.
@@ -33,7 +33,7 @@ active and require both stable check names:
 
 The ruleset requires an up-to-date pull request, resolved review conversations,
 and squash merge; it also blocks deletion and force-pushes. Repository
-administrators have the deliberate emergency bypass (`RepositoryRole` id 6).
+administrators have the deliberate emergency bypass (`RepositoryRole` id 5).
 Use that bypass only for incident recovery, record the reason, and immediately
 restore the branch to a state that passes both checks.
 
@@ -43,14 +43,15 @@ documentation work is complete.
 
 ## Safe verification
 
-1. Install `RELEASE_PLZ_TOKEN`, then wait for the next non-release merge to
-   `main` to run `Release` normally.
-2. On release PR #59 (or a disposable PR produced by release-plz), confirm that
-   the bot's new commit produces a `synchronize` event and starts `CI` and `PR
-   Title` without manually rerunning either workflow.
-3. Confirm `Required checks` stays pending until all CI jobs finish and then
-   succeeds only when all of them succeed.
-4. Confirm GitHub reports the PR behind `main` as blocked and requires it to be
-   updated, and that a failed required check blocks merge.
-5. Close the disposable PR if one was used. Do not merge the release PR and do
-   not run a publish operation as part of verification.
+1. Merge the workflow changes before activating the required-status-check rule,
+   so both named contexts exist on `main` first.
+2. Confirm the resulting `Release` run updates release PR #59 and dispatches
+   both workflows at its head branch without manual approval.
+3. Confirm the pull request's check rollup reports that exact head SHA, and that
+   `Required checks` stays pending until all CI jobs finish.
+4. Update the existing `main` ruleset from `rulesets/main.json`.
+5. Confirm GitHub reports a pull request behind `main` as blocked and requires
+   it to be updated, and that a failed required check blocks merge.
+
+Do not merge release PR #59 and do not run a publish operation as part of
+verification.

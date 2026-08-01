@@ -9,6 +9,12 @@ name: PR Title
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      title:
+        description: Pull request title to validate
+        required: true
+        type: string
 
 permissions:
   pull-requests: read
@@ -18,6 +24,20 @@ jobs:
     name: Conventional PR title
     runs-on: ubuntu-latest
     steps:
-      - uses: amannn/action-semantic-pull-request@v6
+      - name: Validate pull request event
+        if: github.event_name == 'pull_request'
+        uses: amannn/action-semantic-pull-request@v6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate dispatched title
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          PR_TITLE: ${{ inputs.title }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$PR_TITLE" =~ ^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^\)]+\))?(!)?:\ .+ ]]; then
+            echo "Pull request title is not a supported Conventional Commit subject: $PR_TITLE" >&2
+            exit 1
+          fi
