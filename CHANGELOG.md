@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/joshrotenberg/git-spawn/compare/v0.3.0...v0.4.0) - 2026-08-01
+
+
+### Features
+
+- Support quiet reads ([#155](https://github.com/joshrotenberg/git-spawn/pull/155))
+- Support type-checked object output ([#154](https://github.com/joshrotenberg/git-spawn/pull/154))
+- Add no-checkout and no-local options ([#153](https://github.com/joshrotenberg/git-spawn/pull/153))
+
 ## [0.3.0](https://github.com/joshrotenberg/git-spawn/compare/v0.2.1...v0.3.0) - 2026-08-01
 
 
