@@ -11,6 +11,38 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
+  features:
+    name: Features (${{ matrix.configuration }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - configuration: no-default
+            cargo_args: --no-default-features
+          - configuration: default
+            cargo_args: ""
+          - configuration: parse
+            cargo_args: --no-default-features --features parse
+          - configuration: serde
+            cargo_args: --no-default-features --features serde
+          - configuration: workflow
+            cargo_args: --no-default-features --features workflow
+          - configuration: all-features
+            cargo_args: --all-features
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      # The MSRV job retains its all-features build and test coverage; running this
+      # compile-only matrix on stable avoids duplicating every combination there.
+      - name: Check feature configuration
+        run: cargo check ${{ matrix.cargo_args }}
+
   test:
     name: Test (${{ matrix.os }} / ${{ matrix.rust }})
     runs-on: ${{ matrix.os }}
