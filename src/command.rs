@@ -667,7 +667,16 @@ impl CommandExecutor {
         let pid = child.id();
 
         match tokio::time::timeout(timeout_duration, self.wait_with_output(child)).await {
-            Ok(Ok(output)) => Ok(Self::finish(output)),
+            Ok(Ok(output)) => {
+                #[cfg(windows)]
+                job.disarm().map_err(|error| {
+                    map_job_error(
+                        "failed to release successful git descendants from Windows timeout cleanup",
+                        error,
+                    )
+                })?;
+                Ok(Self::finish(output))
+            }
             Ok(Err(e)) => Err(map_wait_error(e)),
             Err(_) => {
                 // The `wait_with_output` future has been dropped, so the direct
@@ -832,9 +841,11 @@ fn resume_process(child: &tokio::process::Child) -> std::io::Result<()> {
 
 /// Owns a Windows Job Object containing one git process and all descendants.
 ///
-/// `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` makes every error/drop path safe. The
-/// timeout path additionally calls `TerminateJobObject` so descendants are
-/// stopped before the guard is dropped, even when wait and timeout race.
+/// `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` makes setup, cancellation, error, and
+/// timeout paths safe. Successful completion disarms that limit so a detached
+/// helper can outlive Git, matching the Unix behavior. The timeout path also
+/// calls `TerminateJobObject` so descendants stop before the guard is dropped,
+/// even when wait and timeout race.
 #[cfg(windows)]
 struct WindowsJob {
     handle: std::os::windows::io::OwnedHandle,
@@ -843,14 +854,9 @@ struct WindowsJob {
 #[cfg(windows)]
 impl WindowsJob {
     fn assign(child: &tokio::process::Child) -> std::io::Result<Self> {
-        use std::mem::{size_of, zeroed};
         use std::os::windows::io::{AsRawHandle, FromRawHandle};
-        use std::ptr::{addr_of, null};
-        use windows_sys::Win32::System::JobObjects::{
-            AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-            JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
-            SetInformationJobObject,
-        };
+        use std::ptr::null;
+        use windows_sys::Win32::System::JobObjects::{AssignProcessToJobObject, CreateJobObjectW};
 
         // SAFETY: null attributes/name create a private job with a valid owned
         // handle on success. OwnedHandle closes it on every following path.
@@ -860,14 +866,44 @@ impl WindowsJob {
         }
         // SAFETY: CreateJobObjectW returned a newly owned handle.
         let handle = unsafe { std::os::windows::io::OwnedHandle::from_raw_handle(raw_job) };
+        let job = Self { handle };
+        job.set_kill_on_close(true)?;
+
+        // Descendants inherit job membership. Assignment happens immediately
+        // after spawn, before this executor performs any other async work.
+        let process = child.raw_handle().ok_or_else(|| {
+            std::io::Error::other("spawned git process has no Windows process handle")
+        })?;
+        let assigned = unsafe { AssignProcessToJobObject(job.handle.as_raw_handle(), process) };
+        if assigned == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+
+        Ok(job)
+    }
+
+    fn disarm(&self) -> std::io::Result<()> {
+        self.set_kill_on_close(false)
+    }
+
+    fn set_kill_on_close(&self, enabled: bool) -> std::io::Result<()> {
+        use std::mem::{size_of, zeroed};
+        use std::os::windows::io::AsRawHandle;
+        use std::ptr::addr_of;
+        use windows_sys::Win32::System::JobObjects::{
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+            JobObjectExtendedLimitInformation, SetInformationJobObject,
+        };
 
         // SAFETY: the information structure and byte count match the requested
         // JobObjectExtendedLimitInformation class.
         let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { zeroed() };
-        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        if enabled {
+            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        }
         let configured = unsafe {
             SetInformationJobObject(
-                handle.as_raw_handle(),
+                self.handle.as_raw_handle(),
                 JobObjectExtendedLimitInformation,
                 addr_of!(info).cast(),
                 size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
@@ -876,18 +912,7 @@ impl WindowsJob {
         if configured == 0 {
             return Err(std::io::Error::last_os_error());
         }
-
-        // Descendants inherit job membership. Assignment happens immediately
-        // after spawn, before this executor performs any other async work.
-        let process = child.raw_handle().ok_or_else(|| {
-            std::io::Error::other("spawned git process has no Windows process handle")
-        })?;
-        let assigned = unsafe { AssignProcessToJobObject(handle.as_raw_handle(), process) };
-        if assigned == 0 {
-            return Err(std::io::Error::last_os_error());
-        }
-
-        Ok(Self { handle })
+        Ok(())
     }
 
     fn terminate(&self) {
@@ -1430,5 +1455,84 @@ mod tests {
             );
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
+    }
+
+    /// A configured timeout must not change successful-command semantics.
+    /// Detached helpers may intentionally outlive Git and are only terminated
+    /// when the timeout/error/cancellation cleanup paths keep the job armed.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn successful_timed_command_preserves_detached_windows_descendant() {
+        use std::time::Instant;
+        use windows_sys::Win32::Foundation::{CloseHandle, STILL_ACTIVE};
+        use windows_sys::Win32::System::Threading::{
+            GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
+            TerminateProcess,
+        };
+
+        let dir = tempfile::tempdir().unwrap();
+        let pidfile = dir.path().join("successful-grandchild.pid");
+        let stdout = dir.path().join("successful-grandchild.stdout");
+        let stderr = dir.path().join("successful-grandchild.stderr");
+        let pidfile = pidfile.to_string_lossy().replace('\\', "/");
+        let stdout = stdout.to_string_lossy().replace('\\', "/");
+        let stderr = stderr.to_string_lossy().replace('\\', "/");
+        let alias = format!(
+            "alias.spawn=!powershell.exe -NoProfile -NonInteractive -Command '$p = Start-Process ping.exe -ArgumentList \"-t\",\"127.0.0.1\" -RedirectStandardOutput \"{stdout}\" -RedirectStandardError \"{stderr}\" -PassThru; Set-Content -LiteralPath \"{pidfile}\" -Value $p.Id'"
+        );
+
+        let mut executor = CommandExecutor::new()
+            .cwd(dir.path())
+            .timeout(Duration::from_secs(10));
+        executor.add_global_args([OsString::from("-c"), OsString::from(alias)]);
+        let output = executor
+            .execute_command(vec!["spawn".into()])
+            .await
+            .expect("git alias should finish before its configured timeout");
+        assert!(output.success);
+
+        let grandchild: u32 = std::fs::read_to_string(&pidfile)
+            .expect("successful alias should have written the grandchild pid")
+            .trim()
+            .parse()
+            .expect("pidfile should contain a pid");
+        // SAFETY: OpenProcess either returns a handle owned below or null.
+        let process = unsafe {
+            OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE,
+                0,
+                grandchild,
+            )
+        };
+        assert!(
+            !process.is_null(),
+            "detached descendant pid {grandchild} should survive successful Git completion"
+        );
+        let mut code = 0;
+        // SAFETY: process is a valid open handle and code is writable.
+        let queried = unsafe { GetExitCodeProcess(process, &mut code) };
+        assert_ne!(queried, 0, "descendant exit status should be queryable");
+        assert_eq!(
+            code, STILL_ACTIVE as u32,
+            "detached descendant pid {grandchild} was killed after successful Git completion"
+        );
+
+        // SAFETY: process is a valid handle opened with PROCESS_TERMINATE.
+        assert_ne!(unsafe { TerminateProcess(process, 1) }, 0);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            // SAFETY: process remains valid until CloseHandle below.
+            assert_ne!(unsafe { GetExitCodeProcess(process, &mut code) }, 0);
+            if code != STILL_ACTIVE as u32 {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "test descendant pid {grandchild} did not terminate during cleanup"
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        // SAFETY: this closes exactly the handle returned by OpenProcess.
+        unsafe { CloseHandle(process) };
     }
 }
