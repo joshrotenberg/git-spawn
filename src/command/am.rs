@@ -9,8 +9,9 @@ use std::path::PathBuf;
 ///
 /// Applies mbox-style patches (as produced by
 /// [`FormatPatchCommand`](crate::FormatPatchCommand)) and commits each one with
-/// its recorded author and message. Reading a mailbox from stdin is not
-/// modelled: this builder always passes mailbox paths on the command line.
+/// its recorded author and message. This typed builder requires mailbox paths;
+/// [`GitCommand::stdin_bytes`] is available to command builders that select a
+/// stdin-reading mode.
 ///
 /// `git am` stops and leaves the repository mid-application when a patch does
 /// not apply. The three session controls — [`cont`](Self::cont),

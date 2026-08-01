@@ -55,8 +55,8 @@ pub enum SparseCheckoutAction {
 /// The five actions use the action-enum dispatch pattern: an option that does
 /// not apply to the selected action is ignored rather than emitted.
 ///
-/// `--stdin` is not modelled; the executor spawns git without a stdin pipe, so
-/// patterns are always passed as arguments.
+/// This typed builder passes patterns as arguments. Command builders that
+/// select `--stdin` can supply exact input with [`GitCommand::stdin_bytes`].
 ///
 /// Output is left as a [`CommandOutput`]: `list` writes one pattern per line
 /// and the other actions write nothing on stdout.

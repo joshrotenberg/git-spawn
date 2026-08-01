@@ -2,13 +2,13 @@
 
 use git_spawn::{
     AmCommand, ApplyCommand, ArchiveCommand, BlameCommand, BranchCommand, BundleCommand,
-    CatFileCommand, CherryCommand, CleanCommand, CountObjectsCommand, DescribeCommand, Error,
-    ForEachRefCommand, FormatPatchCommand, FsckCommand, GcCommand, GitCommand, HashObjectCommand,
-    InterpretTrailersCommand, LogCommand, LsFilesCommand, LsRemoteCommand, LsTreeCommand,
-    MaintenanceCommand, MergeBaseCommand, NameRevCommand, RangeDiffCommand, Repository,
-    RerereCommand, RevParseCommand, RevertCommand, ShortlogCommand, ShowRefCommand,
-    SparseCheckoutCommand, SymbolicRefCommand, UpdateRefCommand, VarCommand, VerifyCommitCommand,
-    VerifyTagCommand, VersionCommand,
+    CatFileCommand, CherryCommand, CleanCommand, CommandExecutor, CountObjectsCommand,
+    DescribeCommand, Error, ForEachRefCommand, FormatPatchCommand, FsckCommand, GcCommand,
+    GitCommand, HashObjectCommand, InterpretTrailersCommand, LogCommand, LsFilesCommand,
+    LsRemoteCommand, LsTreeCommand, MaintenanceCommand, MergeBaseCommand, NameRevCommand,
+    RangeDiffCommand, Repository, RerereCommand, RevParseCommand, RevertCommand, ShortlogCommand,
+    ShowRefCommand, SparseCheckoutCommand, SymbolicRefCommand, UpdateRefCommand, VarCommand,
+    VerifyCommitCommand, VerifyTagCommand, VersionCommand,
 };
 
 use git_spawn::command::archive::ArchiveFormat;
@@ -93,6 +93,47 @@ async fn hash_object_write_and_read_back() {
     let mut c = CatFileCommand::pretty_print(&sha);
     c.current_dir(repo.path());
     assert_eq!(c.execute().await.unwrap(), "some bytes");
+}
+
+#[tokio::test]
+async fn hash_object_stdin_preserves_arbitrary_bytes() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let bytes = vec![0xff, 0x00, b'g', b'i', b't', b'\n', 0x80];
+    let blob_path = repo.path().join("stdin-reference.bin");
+    std::fs::write(&blob_path, &bytes).unwrap();
+
+    let expected = repo.hash_object().path(&blob_path).execute().await.unwrap();
+    let actual = repo
+        .hash_object()
+        .stdin()
+        .stdin_bytes(bytes)
+        .execute()
+        .await
+        .unwrap();
+
+    assert_eq!(actual, expected);
+}
+
+#[tokio::test]
+async fn hash_object_empty_stdin_is_distinct_and_completes_with_timeout() {
+    use std::time::Duration;
+
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let sha = repo
+        .hash_object()
+        .stdin()
+        .stdin_bytes(Vec::new())
+        .with_timeout(Duration::from_secs(5))
+        .execute()
+        .await
+        .unwrap();
+
+    assert_eq!(sha, "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391");
+    assert_eq!(CommandExecutor::new().stdin, None);
+    assert_eq!(
+        CommandExecutor::new().stdin_bytes([]).stdin,
+        Some(Vec::new())
+    );
 }
 
 #[tokio::test]

@@ -7,8 +7,9 @@ use std::path::PathBuf;
 
 /// Builder for `git apply`.
 ///
-/// Applies one or more patch files. Reading a patch from stdin is not modelled:
-/// this builder always passes patch paths on the command line.
+/// Applies one or more patch files. This typed builder requires patch paths;
+/// [`GitCommand::stdin_bytes`] is available to command builders that select a
+/// stdin-reading mode.
 #[derive(Debug, Clone, Default)]
 pub struct ApplyCommand {
     /// Shared executor.
