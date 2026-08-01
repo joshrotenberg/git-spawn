@@ -79,3 +79,63 @@ documentation work is complete.
 
 Do not merge release PR #59 and do not run a publish operation as part of
 verification.
+
+## Remote branch lifecycle
+
+Remote branches are temporary review or automation state, not an archive. Keep
+`main`, branches with an open pull request, and branches whose unique work has
+an identified owner and current purpose. Delete a branch after its pull request
+is merged or closed only after confirming that every unique commit was merged,
+squashed, cherry-picked, or deliberately superseded.
+
+The audit on 2026-08-01 removed the historical feature and release-plz branches
+that met that rule. It retained `release-plz-2026-07-13T21-37-30Z` because it is
+the head of held release PR #59. At the end of the audit, the only other remote
+branches were `main` and the in-progress branch for issue #124.
+
+Run the following read-only audit periodically and before deleting branches:
+
+```bash
+git fetch origin --prune
+git for-each-ref --format='%(refname:short)' refs/remotes/origin \
+  | sed '/^origin\/HEAD$/d; /^origin\/main$/d'
+git rev-list --left-right --count origin/main...origin/<branch>
+git log --oneline origin/main..origin/<branch>
+git cherry origin/main origin/<branch>
+```
+
+For each listed branch, also inspect its pull request and current owner. A zero
+right-hand count from `rev-list` proves the branch tip is an ancestor of
+`main`. A `-` from `git cherry` identifies a patch already present with a
+different commit ID, which is common after squash or cherry-pick merges. Neither
+command alone proves that a branch is disposable: review any `+` commits and
+the pull-request diff, and record why their work is incorporated, obsolete, or
+intentionally abandoned. If that cannot be established, keep the branch.
+
+Delete only the explicitly reviewed remote name, then fetch and repeat the
+listing:
+
+```bash
+git push origin --delete <branch>
+git fetch origin --prune
+```
+
+Never bulk-delete from a generated list, and never delete the head branch of an
+open pull request. Local branches can outlive deleted remote branches and are
+not evidence that a remote branch still exists.
+
+### release-plz branches
+
+release-plz uses a timestamped branch for a release pull request and continues
+updating that branch while its pull request remains open. The repository's
+`release-plz.toml` does not provide remote-branch retention, and the release
+workflow must not delete a branch immediately after creating or updating it:
+that would break both the pull request and the explicitly dispatched checks.
+
+Leave the branch for PR #59 in place for the duration of the release hold. When
+a release pull request is merged, confirm the release and tag succeeded and
+then delete its head branch. When one is closed without merging, first decide
+whether its release commit or changelog contains work to preserve; delete the
+branch only after that decision is recorded. Include `release-plz-*` branches
+in the periodic audit above so interrupted or closed release attempts do not
+accumulate indefinitely.
