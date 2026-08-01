@@ -15,15 +15,27 @@ latest commit as `GITHUB_SHA`. The resulting `Required checks` and
 `Conventional PR title` results therefore belong to the exact release candidate
 revision without a personal access token or stored GitHub App credential.
 
+A dispatched workflow's check run is attached to its workflow suite, but GitHub
+does not include that suite in the release pull request's status rollup. After
+each dispatched validation finishes, the workflow therefore publishes a commit
+status with the same required context on the exact `GITHUB_SHA`. The status
+links back to its originating workflow run and reports success only when the
+validation passed; a failed validation publishes failure. Ordinary
+`pull_request` runs continue to provide the existing check runs and names and do
+not publish duplicate commit statuses. GitHub requires both results to pass when
+a check run and commit status with the same name apply to a revision.
+
 The dispatched title check does not trust caller-supplied title text. It resolves
 the sole open pull request for `GITHUB_REF_NAME`, requires that pull request's
 API head to equal `GITHUB_SHA`, and validates the current title returned by
 GitHub.
 
-The workflow needs `actions: write` to create those dispatches. Its remaining
-permissions are unchanged: `contents: write` and `pull-requests: write` allow
-release-plz to maintain the release pull request. No additional Actions secret
-is required.
+The release workflow needs `actions: write` to create those dispatches. Its
+remaining permissions are unchanged: `contents: write` and `pull-requests:
+write` allow release-plz to maintain the release pull request. No additional
+Actions secret is required. The dispatched validation workflows grant
+`statuses: write` only so they can publish their results; their other
+permissions remain read-only.
 
 ## Protecting `main`
 

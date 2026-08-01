@@ -13,6 +13,7 @@ on:
 
 permissions:
   pull-requests: read
+  statuses: write
 
 jobs:
   conventional:
@@ -68,3 +69,24 @@ jobs:
             echo "Pull request title is not a supported Conventional Commit subject: $PR_TITLE" >&2
             exit 1
           fi
+
+      - name: Publish dispatched result
+        if: ${{ always() && github.event_name == 'workflow_dispatch' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VALIDATION_RESULT: ${{ job.status }}
+        shell: bash
+        run: |
+          state=failure
+          description="Dispatched PR title validation failed"
+          if [[ "$VALIDATION_RESULT" == success ]]; then
+            state=success
+            description="Dispatched PR title validation passed"
+          fi
+
+          gh api --method POST \
+            "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f state="$state" \
+            -f context="Conventional PR title" \
+            -f description="$description" \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
