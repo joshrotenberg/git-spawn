@@ -153,6 +153,22 @@ fn clone_basic() {
 }
 
 #[test]
+fn clone_no_checkout_and_no_local_precede_positionals() {
+    let mut c = CloneCommand::new("https://example.com/foo.git");
+    c.directory("/tmp/foo").no_checkout().no_local();
+    assert_eq!(
+        args_of(&c),
+        vec![
+            "clone",
+            "--no-checkout",
+            "--no-local",
+            "https://example.com/foo.git",
+            "/tmp/foo",
+        ]
+    );
+}
+
+#[test]
 fn add_paths_with_flags() {
     let mut c = AddCommand::new();
     c.all().verbose().paths(["a.txt", "b.txt"]);
@@ -426,6 +442,12 @@ fn ls_tree_path_uses_separator() {
 fn cat_file_pretty_print() {
     let c = CatFileCommand::pretty_print("HEAD");
     assert_eq!(args_of(&c), vec!["cat-file", "-p", "HEAD"]);
+}
+
+#[test]
+fn cat_file_type_checked() {
+    let c = CatFileCommand::type_checked("commit", "HEAD");
+    assert_eq!(args_of(&c), vec!["cat-file", "commit", "HEAD"]);
 }
 
 #[test]
