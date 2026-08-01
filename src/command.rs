@@ -572,7 +572,9 @@ impl CommandExecutor {
     /// On Unix the child is placed in its own process group so a timeout can
     /// signal the whole group. git spawns children of its own (pack processes,
     /// credential/askpass helpers, hooks) that would be orphaned if we only
-    /// killed the direct child. `kill_on_drop` is a belt-and-suspenders guard:
+    /// killed the direct child. On Windows, the spawned child is subsequently
+    /// assigned to a kill-on-close Job Object. `kill_on_drop` is a
+    /// belt-and-suspenders guard:
     /// if the child handle is dropped without an explicit kill, the direct
     /// child is still terminated rather than leaked.
     fn build_command(&self, all_args: &[OsString]) -> TokioCommand {
@@ -642,6 +644,10 @@ impl CommandExecutor {
             .build_command(all_args)
             .spawn()
             .map_err(map_spawn_error)?;
+        #[cfg(windows)]
+        let job = WindowsJob::assign(&child).map_err(|error| {
+            map_job_error("failed to contain git in a Windows Job Object", error)
+        })?;
 
         // Capture the pid (== process-group id on Unix) before `wait_with_output`
         // takes ownership of the child; we need it to signal the group on timeout.
@@ -657,6 +663,8 @@ impl CommandExecutor {
                 if let Some(pid) = pid {
                     kill_process_group(pid);
                 }
+                #[cfg(windows)]
+                job.terminate();
                 warn!(
                     timeout_secs = timeout_duration.as_secs(),
                     "command timed out"
@@ -718,6 +726,14 @@ fn map_wait_error(e: std::io::Error) -> Error {
     }
 }
 
+#[cfg(windows)]
+fn map_job_error(message: &str, source: std::io::Error) -> Error {
+    Error::Io {
+        message: format!("{message}: {source}"),
+        source,
+    }
+}
+
 /// Kill the process group led by `pid`.
 ///
 /// The executor spawns git with `process_group(0)`, so the child's pid is also
@@ -736,11 +752,81 @@ fn kill_process_group(pid: u32) {
     }
 }
 
-/// Windows fallback: there is no portable process-group kill here. The direct
-/// child is terminated via `kill_on_drop` (best-effort `TerminateProcess`);
-/// grandchildren are not tracked. A Job Object would be the complete fix.
+/// Windows uses a Job Object instead of a process group; this remains a no-op
+/// so the common timeout path can retain the Unix group signal.
 #[cfg(not(unix))]
 fn kill_process_group(_pid: u32) {}
+
+/// Owns a Windows Job Object containing one git process and all descendants.
+///
+/// `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` makes every error/drop path safe. The
+/// timeout path additionally calls `TerminateJobObject` so descendants are
+/// stopped before the guard is dropped, even when wait and timeout race.
+#[cfg(windows)]
+struct WindowsJob {
+    handle: std::os::windows::io::OwnedHandle,
+}
+
+#[cfg(windows)]
+impl WindowsJob {
+    fn assign(child: &tokio::process::Child) -> std::io::Result<Self> {
+        use std::mem::{size_of, zeroed};
+        use std::os::windows::io::{AsRawHandle, FromRawHandle};
+        use std::ptr::{addr_of, null};
+        use windows_sys::Win32::System::JobObjects::{
+            AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+            JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
+            SetInformationJobObject,
+        };
+
+        // SAFETY: null attributes/name create a private job with a valid owned
+        // handle on success. OwnedHandle closes it on every following path.
+        let raw_job = unsafe { CreateJobObjectW(null(), null()) };
+        if raw_job.is_null() {
+            return Err(std::io::Error::last_os_error());
+        }
+        // SAFETY: CreateJobObjectW returned a newly owned handle.
+        let handle = unsafe { std::os::windows::io::OwnedHandle::from_raw_handle(raw_job) };
+
+        // SAFETY: the information structure and byte count match the requested
+        // JobObjectExtendedLimitInformation class.
+        let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { zeroed() };
+        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        let configured = unsafe {
+            SetInformationJobObject(
+                handle.as_raw_handle(),
+                JobObjectExtendedLimitInformation,
+                addr_of!(info).cast(),
+                size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            )
+        };
+        if configured == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+
+        // Descendants inherit job membership. Assignment happens immediately
+        // after spawn, before this executor performs any other async work.
+        let assigned =
+            unsafe { AssignProcessToJobObject(handle.as_raw_handle(), child.as_raw_handle()) };
+        if assigned == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+
+        Ok(Self { handle })
+    }
+
+    fn terminate(&self) {
+        use std::os::windows::io::AsRawHandle;
+        use windows_sys::Win32::System::JobObjects::TerminateJobObject;
+
+        // SAFETY: handle remains owned by self for the duration of the call.
+        // Failure is intentionally best-effort: dropping the kill-on-close job
+        // immediately afterwards provides the fallback cleanup path.
+        unsafe {
+            TerminateJobObject(self.handle.as_raw_handle(), 1);
+        }
+    }
+}
 
 /// Captured output from running a git command.
 #[derive(Debug, Clone)]
@@ -1114,6 +1200,97 @@ mod tests {
             assert!(
                 Instant::now() < deadline,
                 "grandchild pid {grandchild} survived the timeout: process group was not killed"
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }
+
+    /// Git for Windows runs hooks through its bundled shell. This hook starts
+    /// a separate long-lived Windows process, records its pid, and waits so the
+    /// commit remains blocked until the executor timeout terminates the job.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn timeout_kills_windows_job_descendants() {
+        use std::time::Instant;
+        use windows_sys::Win32::Foundation::{CloseHandle, STILL_ACTIVE};
+        use windows_sys::Win32::System::Threading::{
+            GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path();
+        let run = |args: Vec<&str>| {
+            let owned: Vec<String> = args.into_iter().map(ToOwned::to_owned).collect();
+            let cwd = path.to_path_buf();
+            async move {
+                CommandExecutor::new()
+                    .cwd(cwd)
+                    .execute_command(owned)
+                    .await
+                    .unwrap()
+            }
+        };
+
+        let hooks_dir = path.join("hooks-under-test");
+        std::fs::create_dir(&hooks_dir).unwrap();
+        run(vec!["init", "-q"]).await;
+        run(vec!["config", "user.email", "test@example.com"]).await;
+        run(vec!["config", "user.name", "Test"]).await;
+        run(vec!["config", "commit.gpgsign", "false"]).await;
+        run(vec![
+            "config",
+            "core.hooksPath",
+            hooks_dir.to_str().unwrap(),
+        ])
+        .await;
+        std::fs::write(path.join("file.txt"), "hi").unwrap();
+        run(vec!["add", "."]).await;
+
+        let pidfile = path.join("grandchild.pid");
+        let pidfile = pidfile.to_string_lossy().replace('\\', "/");
+        std::fs::write(
+            hooks_dir.join("pre-commit"),
+            format!(
+                "#!/bin/sh\npowershell.exe -NoProfile -NonInteractive -Command '$p = Start-Process ping.exe -ArgumentList \"-t\",\"127.0.0.1\" -PassThru; Set-Content -LiteralPath \"{pidfile}\" -Value $p.Id; Wait-Process -Id $p.Id'\n"
+            ),
+        )
+        .unwrap();
+
+        let err = CommandExecutor::new()
+            .cwd(path)
+            .timeout(Duration::from_millis(1500))
+            .execute_command(vec!["commit".into(), "-m".into(), "x".into()])
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, Error::Timeout { .. }),
+            "expected timeout, got {err:?}"
+        );
+
+        let grandchild: u32 = std::fs::read_to_string(&pidfile)
+            .expect("hook should have written the grandchild pid")
+            .trim()
+            .parse()
+            .expect("pidfile should contain a pid");
+        let is_alive = |pid| {
+            // SAFETY: OpenProcess either returns a handle owned below or null.
+            let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+            if process.is_null() {
+                return false;
+            }
+            let mut code = 0;
+            // SAFETY: process is a valid open handle and code is writable.
+            let queried = unsafe { GetExitCodeProcess(process, &mut code) };
+            // SAFETY: this closes exactly the handle returned by OpenProcess.
+            unsafe { CloseHandle(process) };
+            queried != 0 && code == STILL_ACTIVE as u32
+        };
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while is_alive(grandchild) {
+            assert!(
+                Instant::now() < deadline,
+                "grandchild pid {grandchild} survived the timeout: Job Object was not terminated"
             );
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
