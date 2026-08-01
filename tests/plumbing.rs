@@ -90,6 +90,30 @@ async fn cat_file_type_and_pretty_print() {
 }
 
 #[tokio::test]
+async fn cat_file_type_checked_commit() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+
+    let mut c = CatFileCommand::type_checked("commit", "HEAD");
+    c.current_dir(repo.path());
+    let text = c.execute().await.unwrap();
+    assert!(text.starts_with("tree "));
+
+    let bytes = c.execute_bytes().await.unwrap();
+    assert_eq!(bytes, format!("{text}\n").into_bytes());
+}
+
+#[tokio::test]
+async fn cat_file_type_checked_rejects_empty_values() {
+    let empty_type = CatFileCommand::type_checked("", "HEAD");
+    let err = empty_type.execute().await.unwrap_err();
+    assert!(err.to_string().contains("non-empty expected type"));
+
+    let empty_object = CatFileCommand::type_checked("commit", "");
+    let err = empty_object.execute().await.unwrap_err();
+    assert!(err.to_string().contains("non-empty object"));
+}
+
+#[tokio::test]
 async fn hash_object_write_and_read_back() {
     let (_tmp, repo) = make_repo_with_commit().await;
     let blob_path = repo.path().join("blobby.txt");

@@ -16,6 +16,8 @@ pub enum CatFileMode {
     Exists,
     /// `-p`: pretty-print the object's contents.
     PrettyPrint,
+    /// `<type> <object>`: print the object's contents after verifying its type.
+    TypeChecked,
 }
 
 /// Builder for `git cat-file`.
@@ -28,6 +30,8 @@ pub struct CatFileCommand {
     pub mode: CatFileMode,
     /// Object to inspect.
     pub object: String,
+    /// Required object type for [`CatFileMode::TypeChecked`].
+    pub expected_type: Option<String>,
 }
 
 impl CatFileCommand {
@@ -37,6 +41,7 @@ impl CatFileCommand {
             executor: CommandExecutor::default(),
             mode: CatFileMode::PrettyPrint,
             object: object.into(),
+            expected_type: None,
         }
     }
 
@@ -46,6 +51,7 @@ impl CatFileCommand {
             executor: CommandExecutor::default(),
             mode: CatFileMode::Type,
             object: object.into(),
+            expected_type: None,
         }
     }
 
@@ -55,6 +61,7 @@ impl CatFileCommand {
             executor: CommandExecutor::default(),
             mode: CatFileMode::Size,
             object: object.into(),
+            expected_type: None,
         }
     }
 
@@ -64,7 +71,37 @@ impl CatFileCommand {
             executor: CommandExecutor::default(),
             mode: CatFileMode::Exists,
             object: object.into(),
+            expected_type: None,
         }
+    }
+
+    /// Create a `cat-file <type> <object>` command.
+    ///
+    /// Git prints the object's contents only after verifying that the object
+    /// has the requested type.
+    pub fn type_checked(expected_type: impl Into<String>, object: impl Into<String>) -> Self {
+        Self {
+            executor: CommandExecutor::default(),
+            mode: CatFileMode::TypeChecked,
+            object: object.into(),
+            expected_type: Some(expected_type.into()),
+        }
+    }
+
+    fn validate(&self) -> Result<()> {
+        if matches!(self.mode, CatFileMode::TypeChecked)
+            && self.expected_type.as_deref().is_none_or(str::is_empty)
+        {
+            return Err(Error::invalid_config(
+                "cat-file requires a non-empty expected type",
+            ));
+        }
+        if self.object.is_empty() {
+            return Err(Error::invalid_config(
+                "cat-file requires a non-empty object",
+            ));
+        }
+        Ok(())
     }
 
     /// Run the command and return stdout as raw, untrimmed bytes.
@@ -74,11 +111,7 @@ impl CatFileCommand {
     /// lossily as UTF-8 and trims trailing whitespace, either of which corrupts
     /// binary content.
     pub async fn execute_bytes(&self) -> Result<Vec<u8>> {
-        if self.object.is_empty() {
-            return Err(Error::invalid_config(
-                "cat-file requires a non-empty object",
-            ));
-        }
+        self.validate()?;
         let out = self.execute_raw().await?;
         Ok(out.stdout)
     }
@@ -98,20 +131,17 @@ impl GitCommand for CatFileCommand {
         &mut self.executor
     }
     fn build_command_args(&self) -> Vec<String> {
-        let flag = match self.mode {
+        let mode = match self.mode {
             CatFileMode::Type => "-t",
             CatFileMode::Size => "-s",
             CatFileMode::Exists => "-e",
             CatFileMode::PrettyPrint => "-p",
+            CatFileMode::TypeChecked => self.expected_type.as_deref().unwrap_or_default(),
         };
-        vec!["cat-file".into(), flag.into(), self.object.clone()]
+        vec!["cat-file".into(), mode.into(), self.object.clone()]
     }
     async fn execute(&self) -> Result<String> {
-        if self.object.is_empty() {
-            return Err(Error::invalid_config(
-                "cat-file requires a non-empty object",
-            ));
-        }
+        self.validate()?;
         let out = self.execute_raw().await?;
         Ok(out.stdout_trimmed())
     }

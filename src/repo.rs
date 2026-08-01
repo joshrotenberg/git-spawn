@@ -415,7 +415,8 @@ impl Repository {
     ///
     /// Construct `action` with [`CatFileCommand::pretty_print`],
     /// [`CatFileCommand::object_type`], [`CatFileCommand::size`], or
-    /// [`CatFileCommand::exists`].
+    /// [`CatFileCommand::exists`]. Use [`CatFileCommand::type_checked`] to
+    /// require a particular object type while reading its contents.
     #[must_use]
     pub fn cat_file(&self, action: CatFileCommand) -> CatFileCommand {
         let mut c = action;
