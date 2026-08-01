@@ -22,9 +22,11 @@ is required.
 
 ## Protecting `main`
 
-Update the repository's existing `main` ruleset to match
-[rulesets/main.json](rulesets/main.json). Do not create a second overlapping
-ruleset. Keep it active and require both stable check names:
+Create or update one `main` ruleset to match
+[rulesets/main.json](rulesets/main.json). This repository already has a `main`
+ruleset, so update that rule in place; if it is absent in a restored or forked
+repository, import the JSON as a new active ruleset. Do not leave two
+overlapping rulesets. Require both stable check names:
 
 - `Required checks` is the rollup for every matrix and non-matrix job in
   `ci.yml`.
