@@ -1475,6 +1475,17 @@ mod tests {
         }
     }
 
+    /// Long-lived process invoked by the success-path containment regression.
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "spawned by the Windows descendant-lifetime regression test"]
+    fn windows_detached_descendant_helper() {
+        let pidfile = std::env::var_os("GIT_SPAWN_WINDOWS_DESCENDANT_PIDFILE")
+            .expect("helper requires its pidfile environment variable");
+        std::fs::write(pidfile, std::process::id().to_string()).unwrap();
+        std::thread::sleep(Duration::from_secs(300));
+    }
+
     /// A configured timeout must not change successful-command semantics.
     /// Detached helpers may intentionally outlive Git and are only terminated
     /// when the timeout/error/cancellation cleanup paths keep the job armed.
@@ -1495,21 +1506,17 @@ mod tests {
         let pidfile_arg = pidfile.to_string_lossy().replace('\\', "/");
         let stdout_arg = stdout.to_string_lossy().replace('\\', "/");
         let stderr_arg = stderr.to_string_lossy().replace('\\', "/");
-        let script = dir.path().join("spawn-and-exit.ps1");
-        let script_arg = script.to_string_lossy().replace('\\', "/");
-        std::fs::write(
-            &script,
-            format!(
-                "$p = Start-Process ping.exe -ArgumentList '-t','127.0.0.1' -RedirectStandardOutput '{stdout_arg}' -RedirectStandardError '{stderr_arg}' -PassThru\nSet-Content -LiteralPath '{pidfile_arg}' -Value $p.Id\n"
-            ),
-        )
-        .unwrap();
+        let helper = std::env::current_exe()
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
         let alias = format!(
-            "alias.spawn=!powershell.exe -NoProfile -NonInteractive -File \"{script_arg}\""
+            "alias.spawn=!\"{helper}\" command::tests::windows_detached_descendant_helper --ignored --exact >\"{stdout_arg}\" 2>\"{stderr_arg}\" &"
         );
 
         let mut executor = CommandExecutor::new()
             .cwd(dir.path())
+            .with_env("GIT_SPAWN_WINDOWS_DESCENDANT_PIDFILE", pidfile_arg)
             .timeout(Duration::from_secs(10));
         executor.add_global_args([OsString::from("-c"), OsString::from(alias)]);
         let output = executor
