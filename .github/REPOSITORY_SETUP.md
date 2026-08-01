@@ -147,17 +147,24 @@ command alone proves that a branch is disposable: review any `+` commits and
 the pull-request diff, and record why their work is incorporated, obsolete, or
 intentionally abandoned. If that cannot be established, keep the branch.
 
-Delete only the explicitly reviewed remote name, then fetch and repeat the
-listing:
+Record the exact remote tip before auditing it. Delete only the explicitly
+reviewed remote name, with an expected-SHA lease that makes the deletion fail
+if the branch moved after the audit, then fetch and repeat the listing:
 
 ```bash
-git push origin --delete <branch>
+git rev-parse origin/<branch> # record this as <reviewed-tip>
+# Perform the audit above against that exact tip before continuing.
+git push --force-with-lease=refs/heads/<branch>:<reviewed-tip> \
+  origin :refs/heads/<branch>
 git fetch origin --prune
 ```
 
-Never bulk-delete from a generated list, and never delete the head branch of an
-open pull request. Local branches can outlive deleted remote branches and are
-not evidence that a remote branch still exists.
+Treat a lease failure as evidence that the branch changed: fetch it and repeat
+the complete audit against the new tip instead of retrying with a broader force
+or an unqualified deletion. Never bulk-delete from a generated list, and never
+delete the head branch of an open pull request. Local branches can outlive
+deleted remote branches and are not evidence that a remote branch still
+exists.
 
 ### release-plz branches
 
