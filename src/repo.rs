@@ -62,10 +62,20 @@ use crate::command::{
 use crate::error::{Error, Result};
 use std::path::{Path, PathBuf};
 
-/// A handle to a git working tree.
+/// Cheap structural check for whether `path` is itself a git directory,
+/// as opposed to a working tree that contains one at `path/.git`. This is
+/// what a bare repository (`git clone --bare`, or the `.git` directory of
+/// a normal repository) looks like on disk.
+fn looks_like_git_dir(path: &Path) -> bool {
+    path.join("HEAD").is_file() && path.join("objects").is_dir() && path.join("refs").is_dir()
+}
+
+/// A handle to a git working tree or bare repository.
 ///
 /// Construction does not spawn `git`. [`Repository::open`] only verifies that
-/// a `.git` directory (or file, for worktrees/submodules) exists at the path.
+/// a `.git` directory (or file, for worktrees/submodules) exists at the
+/// path, or that the path itself looks like a git directory (a bare
+/// repository).
 #[derive(Debug, Clone)]
 pub struct Repository {
     path: PathBuf,
@@ -74,11 +84,14 @@ pub struct Repository {
 impl Repository {
     /// Open an existing repository at `path` without running `git`.
     ///
-    /// Returns [`Error::NotARepository`] if `path/.git` does not exist.
+    /// Accepts a normal working tree (`path/.git` exists) as well as a bare
+    /// repository, where `path` itself is the git directory.
+    ///
+    /// Returns [`Error::NotARepository`] if neither looks like a git
+    /// directory.
     pub fn open(path: impl Into<PathBuf>) -> Result<Self> {
         let path = path.into();
-        let dotgit = path.join(".git");
-        if !dotgit.exists() {
+        if !path.join(".git").exists() && !looks_like_git_dir(&path) {
             return Err(Error::not_a_repository(path.display().to_string()));
         }
         Ok(Self { path })
@@ -684,6 +697,27 @@ mod tests {
     #[test]
     fn open_missing_repo_errors() {
         let tmp = tempfile::tempdir().unwrap();
+        let err = Repository::open(tmp.path()).unwrap_err();
+        assert!(matches!(err, Error::NotARepository { .. }));
+    }
+
+    #[test]
+    fn open_accepts_bare_repository() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("HEAD"), "ref: refs/heads/main\n").unwrap();
+        std::fs::create_dir(tmp.path().join("objects")).unwrap();
+        std::fs::create_dir(tmp.path().join("refs")).unwrap();
+
+        let repo = Repository::open(tmp.path()).unwrap();
+        assert_eq!(repo.path(), tmp.path());
+    }
+
+    #[test]
+    fn open_rejects_directory_missing_git_structure() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Only some of the bare-repo markers present: still not a repository.
+        std::fs::write(tmp.path().join("HEAD"), "ref: refs/heads/main\n").unwrap();
+
         let err = Repository::open(tmp.path()).unwrap_err();
         assert!(matches!(err, Error::NotARepository { .. }));
     }
