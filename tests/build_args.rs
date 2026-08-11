@@ -347,6 +347,43 @@ fn remote_list_verbose() {
 }
 
 #[test]
+fn remote_get_url() {
+    let c = RemoteCommand::get_url("origin");
+    assert_eq!(args_of(&c), vec!["remote", "get-url", "origin"]);
+}
+
+#[test]
+fn remote_get_url_push() {
+    let mut c = RemoteCommand::get_url("origin");
+    c.push_url();
+    assert_eq!(args_of(&c), vec!["remote", "get-url", "--push", "origin"]);
+}
+
+#[test]
+fn remote_get_url_all() {
+    let mut c = RemoteCommand::get_url("origin");
+    c.all();
+    assert_eq!(args_of(&c), vec!["remote", "get-url", "--all", "origin"]);
+}
+
+#[test]
+fn remote_get_url_push_and_all() {
+    let mut c = RemoteCommand::get_url("upstream");
+    c.push_url().all();
+    assert_eq!(
+        args_of(&c),
+        vec!["remote", "get-url", "--push", "--all", "upstream"]
+    );
+}
+
+#[test]
+fn remote_toggles_ignored_off_get_url() {
+    let mut c = RemoteCommand::show("origin");
+    c.push_url().all();
+    assert_eq!(args_of(&c), vec!["remote", "show", "origin"]);
+}
+
+#[test]
 fn tag_annotated() {
     let mut c = TagCommand::new();
     c.message("v1").name("v1.0.0");
