@@ -429,6 +429,83 @@ async fn remote_add_and_list() {
 }
 
 #[tokio::test]
+async fn remote_get_url_reports_urls() {
+    let (_tmp, repo) = make_repo().await;
+    repo.remote(git_spawn::RemoteCommand::add(
+        "origin",
+        "https://example.com/repo.git",
+    ))
+    .execute()
+    .await
+    .unwrap();
+
+    let out = repo
+        .remote(git_spawn::RemoteCommand::get_url("origin"))
+        .execute()
+        .await
+        .unwrap();
+    assert_eq!(out.stdout_str().trim(), "https://example.com/repo.git");
+
+    // A separate push URL is reported only by `--push`.
+    repo.config(git_spawn::ConfigCommand::set(
+        "remote.origin.pushurl",
+        "git@example.com:repo.git",
+    ))
+    .execute()
+    .await
+    .unwrap();
+
+    let mut push_cmd = repo.remote(git_spawn::RemoteCommand::get_url("origin"));
+    push_cmd.push_url();
+    let out = push_cmd.execute().await.unwrap();
+    assert_eq!(out.stdout_str().trim(), "git@example.com:repo.git");
+
+    let out = repo
+        .remote(git_spawn::RemoteCommand::get_url("origin"))
+        .execute()
+        .await
+        .unwrap();
+    assert_eq!(
+        out.stdout_str().trim(),
+        "https://example.com/repo.git",
+        "the fetch URL is unchanged by a push URL"
+    );
+
+    // A second fetch URL is reported only by `--all`.
+    repo.config(git_spawn::ConfigCommand::add(
+        "remote.origin.url",
+        "https://example.com/mirror.git",
+    ))
+    .execute()
+    .await
+    .unwrap();
+
+    let mut all_cmd = repo.remote(git_spawn::RemoteCommand::get_url("origin"));
+    all_cmd.all();
+    let out = all_cmd.execute().await.unwrap();
+    let stdout = out.stdout_str();
+    let urls: Vec<&str> = stdout.lines().map(str::trim).collect();
+    assert_eq!(
+        urls,
+        vec![
+            "https://example.com/repo.git",
+            "https://example.com/mirror.git"
+        ]
+    );
+}
+
+#[tokio::test]
+async fn remote_get_url_errors_for_unknown_remote() {
+    let (_tmp, repo) = make_repo().await;
+    assert!(
+        repo.remote(git_spawn::RemoteCommand::get_url("nope"))
+            .execute()
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
 async fn push_pull_via_local_remote() {
     let tmp = tempfile::tempdir().unwrap();
 
