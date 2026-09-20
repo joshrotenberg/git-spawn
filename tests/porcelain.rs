@@ -494,6 +494,127 @@ async fn push_pull_via_local_remote() {
     assert!(repo_b.path().join("another").exists());
 }
 
+/// Bare remote plus a working copy A that has pushed `main` to it, with a
+/// second commit made locally via `--amend` so the next push needs forcing.
+/// Returns the tempdir guard, the working copy, and the object the remote's
+/// `main` still points at.
+async fn make_repo_diverged_from_its_remote() -> (tempfile::TempDir, Repository, String) {
+    let tmp = tempfile::tempdir().unwrap();
+
+    let bare_path = tmp.path().join("remote.git");
+    std::fs::create_dir_all(&bare_path).unwrap();
+    let mut init = git_spawn::InitCommand::in_directory(&bare_path);
+    init.bare().initial_branch("main").quiet();
+    init.execute().await.unwrap();
+
+    let a_path = tmp.path().join("a");
+    std::fs::create_dir_all(&a_path).unwrap();
+    let mut init_a = git_spawn::InitCommand::in_directory(&a_path);
+    init_a.initial_branch("main").quiet();
+    let repo = init_a.execute().await.unwrap();
+    configure_identity(&repo).await;
+    commit_one(&repo, "hello", "hi\n", "init").await;
+
+    repo.remote(git_spawn::RemoteCommand::add(
+        "origin",
+        bare_path.display().to_string(),
+    ))
+    .execute()
+    .await
+    .unwrap();
+    repo.push()
+        .set_upstream()
+        .remote("origin")
+        .refspec("main")
+        .execute()
+        .await
+        .unwrap();
+
+    let pushed = head_of(&repo).await;
+
+    // Rewrite the pushed commit so the branches diverge.
+    std::fs::write(repo.path().join("hello"), "changed\n").unwrap();
+    repo.add().path("hello").execute().await.unwrap();
+    repo.commit()
+        .message("amended")
+        .amend()
+        .execute()
+        .await
+        .unwrap();
+
+    (tmp, repo, pushed)
+}
+
+async fn head_of(repo: &Repository) -> String {
+    let mut cmd = git_spawn::RevParseCommand::new();
+    cmd.current_dir(repo.path()).arg_str("HEAD");
+    cmd.execute().await.unwrap().trim().to_string()
+}
+
+#[tokio::test]
+async fn push_force_with_lease_rejects_a_stale_expected_object() {
+    let (_tmp, repo, _pushed) = make_repo_diverged_from_its_remote().await;
+
+    // Lease against the local head, which is not what the remote holds.
+    let local = head_of(&repo).await;
+    let err = repo
+        .push()
+        .force_with_lease_for("main", Some(local))
+        .remote("origin")
+        .refspec("main")
+        .execute()
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, git_spawn::Error::CommandFailed { .. }),
+        "unexpected error: {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn push_force_with_lease_accepts_the_expected_object() {
+    let (_tmp, repo, pushed) = make_repo_diverged_from_its_remote().await;
+
+    repo.push()
+        .force_with_lease_for("main", Some(pushed))
+        .remote("origin")
+        .refspec("main")
+        .execute()
+        .await
+        .unwrap();
+
+    let mut ls = git_spawn::LsRemoteCommand::new();
+    ls.current_dir(repo.path()).repository("origin").heads();
+    let out = ls.execute().await.unwrap();
+    assert!(
+        out.stdout_str().contains(&head_of(&repo).await),
+        "remote main did not move: {}",
+        out.stdout_str()
+    );
+}
+
+#[tokio::test]
+async fn push_force_with_lease_for_an_absent_ref_takes_an_empty_expectation() {
+    let (_tmp, repo, _pushed) = make_repo_diverged_from_its_remote().await;
+
+    repo.push()
+        .force_with_lease_for("topic", Some(String::new()))
+        .remote("origin")
+        .refspec("HEAD:refs/heads/topic")
+        .execute()
+        .await
+        .unwrap();
+
+    let mut ls = git_spawn::LsRemoteCommand::new();
+    ls.current_dir(repo.path()).repository("origin").heads();
+    let out = ls.execute().await.unwrap();
+    assert!(
+        out.stdout_str().contains("refs/heads/topic"),
+        "topic was not created: {}",
+        out.stdout_str()
+    );
+}
+
 #[tokio::test]
 async fn pull_classifies_fast_forward_and_already_up_to_date() {
     let tmp = tempfile::tempdir().unwrap();

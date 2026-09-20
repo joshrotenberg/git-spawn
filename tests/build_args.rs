@@ -5,6 +5,7 @@ use git_spawn::command::{
     archive::ArchiveFormat,
     interpret_trailers::{TrailerIfExists, TrailerIfMissing, TrailerWhere},
     maintenance::{MaintenanceSchedule, MaintenanceTask},
+    push::PushRecurseSubmodules,
     reset::ResetMode,
     stash::StashCommand,
     status::StatusFormat,
@@ -1606,4 +1607,98 @@ fn check_ref_format_full_ref_options() {
 fn check_ref_format_branch_mode() {
     let c = CheckRefFormatCommand::branch("topic");
     assert_eq!(args_of(&c), vec!["check-ref-format", "--branch", "topic"]);
+}
+
+#[test]
+fn push_force_with_lease_bare() {
+    let mut c = PushCommand::new();
+    c.force_with_lease().remote("origin").refspec("main");
+    assert_eq!(
+        args_of(&c),
+        vec!["push", "--force-with-lease", "origin", "main"]
+    );
+}
+
+#[test]
+fn push_force_with_lease_for_ref_only() {
+    let mut c = PushCommand::new();
+    c.force_with_lease_for("main", None)
+        .remote("origin")
+        .refspec("main");
+    assert_eq!(
+        args_of(&c),
+        vec!["push", "--force-with-lease=main", "origin", "main"]
+    );
+}
+
+#[test]
+fn push_force_with_lease_for_ref_and_expected_object() {
+    let mut c = PushCommand::new();
+    c.force_with_lease_for("main", Some("deadbeef".to_string()))
+        .remote("origin")
+        .refspec("main");
+    assert_eq!(
+        args_of(&c),
+        vec!["push", "--force-with-lease=main:deadbeef", "origin", "main"]
+    );
+}
+
+#[test]
+fn push_force_with_lease_for_empty_expected_object() {
+    let mut c = PushCommand::new();
+    c.force_with_lease_for("topic", Some(String::new()));
+    assert_eq!(args_of(&c), vec!["push", "--force-with-lease=topic:"]);
+}
+
+#[test]
+fn push_force_with_lease_keeps_the_last_call() {
+    let mut c = PushCommand::new();
+    c.force_with_lease_for("main", Some("deadbeef".to_string()))
+        .force_with_lease();
+    assert_eq!(args_of(&c), vec!["push", "--force-with-lease"]);
+}
+
+#[test]
+fn push_no_follow_tags_no_verify_and_recurse_submodules() {
+    let mut c = PushCommand::new();
+    c.no_follow_tags()
+        .no_verify()
+        .recurse_submodules(PushRecurseSubmodules::OnDemand)
+        .remote("origin")
+        .refspec("main");
+    assert_eq!(
+        args_of(&c),
+        vec![
+            "push",
+            "--no-follow-tags",
+            "--no-verify",
+            "--recurse-submodules=on-demand",
+            "origin",
+            "main"
+        ]
+    );
+}
+
+#[test]
+fn push_follow_tags_keeps_the_last_call() {
+    let mut c = PushCommand::new();
+    c.no_follow_tags().follow_tags();
+    assert_eq!(args_of(&c), vec!["push", "--follow-tags"]);
+}
+
+#[test]
+fn push_recurse_submodules_modes() {
+    for (mode, spelling) in [
+        (PushRecurseSubmodules::Check, "check"),
+        (PushRecurseSubmodules::OnDemand, "on-demand"),
+        (PushRecurseSubmodules::Only, "only"),
+        (PushRecurseSubmodules::No, "no"),
+    ] {
+        let mut c = PushCommand::new();
+        c.recurse_submodules(mode);
+        assert_eq!(
+            args_of(&c),
+            vec!["push", &format!("--recurse-submodules={spelling}")]
+        );
+    }
 }
