@@ -1607,3 +1607,46 @@ fn check_ref_format_branch_mode() {
     let c = CheckRefFormatCommand::branch("topic");
     assert_eq!(args_of(&c), vec!["check-ref-format", "--branch", "topic"]);
 }
+
+#[test]
+fn rev_parse_git_common_dir() {
+    let mut c = RevParseCommand::new();
+    c.git_common_dir();
+    assert_eq!(args_of(&c), vec!["rev-parse", "--git-common-dir"]);
+}
+
+#[test]
+fn rev_parse_absolute_git_common_dir() {
+    let mut c = RevParseCommand::new();
+    c.absolute_git_common_dir();
+    assert_eq!(
+        args_of(&c),
+        vec!["rev-parse", "--path-format=absolute", "--git-common-dir"]
+    );
+}
+
+#[test]
+fn rev_parse_git_common_dir_last_call_wins() {
+    let mut c = RevParseCommand::new();
+    c.absolute_git_common_dir().git_common_dir();
+    assert_eq!(args_of(&c), vec!["rev-parse", "--git-common-dir"]);
+}
+
+/// `--path-format` is positional and rewrites every path option that follows
+/// it, so it must be emitted after `--git-dir` and `--show-toplevel` or it
+/// would silently make those absolute too.
+#[test]
+fn rev_parse_path_format_does_not_precede_other_path_queries() {
+    let mut c = RevParseCommand::new();
+    c.show_toplevel().git_dir().absolute_git_common_dir();
+    assert_eq!(
+        args_of(&c),
+        vec![
+            "rev-parse",
+            "--show-toplevel",
+            "--git-dir",
+            "--path-format=absolute",
+            "--git-common-dir"
+        ]
+    );
+}
