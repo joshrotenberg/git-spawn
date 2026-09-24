@@ -7,7 +7,7 @@ use git_spawn::command::{
     maintenance::{MaintenanceSchedule, MaintenanceTask},
     reset::ResetMode,
     stash::StashCommand,
-    status::StatusFormat,
+    status::{IgnoreSubmodules, StatusFormat},
 };
 use git_spawn::*;
 
@@ -1606,4 +1606,44 @@ fn check_ref_format_full_ref_options() {
 fn check_ref_format_branch_mode() {
     let c = CheckRefFormatCommand::branch("topic");
     assert_eq!(args_of(&c), vec!["check-ref-format", "--branch", "topic"]);
+}
+
+#[test]
+fn status_ignore_submodules_modes() {
+    for (mode, expected) in [
+        (IgnoreSubmodules::None, "--ignore-submodules=none"),
+        (IgnoreSubmodules::Untracked, "--ignore-submodules=untracked"),
+        (IgnoreSubmodules::Dirty, "--ignore-submodules=dirty"),
+        (IgnoreSubmodules::All, "--ignore-submodules=all"),
+    ] {
+        let mut c = StatusCommand::new();
+        c.ignore_submodules(mode);
+        assert_eq!(args_of(&c), vec!["status", expected]);
+    }
+}
+
+#[test]
+fn status_ignore_submodules_precedes_pathspec() {
+    let mut c = StatusCommand::new();
+    c.format(StatusFormat::PorcelainV1)
+        .ignore_submodules(IgnoreSubmodules::None)
+        .path("vendor");
+    assert_eq!(
+        args_of(&c),
+        vec![
+            "status",
+            "--porcelain=v1",
+            "--ignore-submodules=none",
+            "--",
+            "vendor"
+        ]
+    );
+}
+
+#[test]
+fn status_ignore_submodules_last_call_wins() {
+    let mut c = StatusCommand::new();
+    c.ignore_submodules(IgnoreSubmodules::All)
+        .ignore_submodules(IgnoreSubmodules::Dirty);
+    assert_eq!(args_of(&c), vec!["status", "--ignore-submodules=dirty"]);
 }
