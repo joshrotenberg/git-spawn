@@ -2360,7 +2360,22 @@ async fn fsck_reports_a_dangling_object_by_default() {
 
 #[tokio::test]
 async fn maintenance_run_writes_the_commit_graph() {
-    let (_tmp, repo) = make_repo_with_commit().await;
+    // Disable auto maintenance before the first commit: otherwise `commit` can
+    // detach a background `maintenance run --auto` that holds
+    // `objects/maintenance.lock`, and the explicit run below then exits 0
+    // without doing any work.
+    let (_tmp, repo) = common::init_repo().await;
+    for (key, value) in [("gc.auto", "0"), ("maintenance.auto", "false")] {
+        let mut cfg = ConfigCommand::set(key, value);
+        cfg.scope(ConfigScope::Local);
+        cfg.current_dir(repo.path());
+        cfg.execute()
+            .await
+            .unwrap_or_else(|e| panic!("git config {key} failed: {e}"));
+    }
+    std::fs::write(repo.path().join("hello.txt"), "hi\n").unwrap();
+    repo.add().path("hello.txt").execute().await.unwrap();
+    repo.commit().message("init").execute().await.unwrap();
     // The commit-graph task writes a split chain under commit-graphs/, not the
     // single commit-graph file that a full `git gc` produces. Verified against
     // git 2.50.1 before the assertion was written.
