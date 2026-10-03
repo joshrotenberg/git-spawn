@@ -241,18 +241,20 @@ async fn cherry_pick_conflict_is_detected() {
     let mut pick = repo.cherry_pick();
     pick.commit(&topic_head);
     let err = pick.execute().await.unwrap_err();
-    let (stdout, stderr, exit_code) = match err {
+    let (stdout, stderr, exit_code, status) = match err {
         git_spawn::Error::CommandFailed {
             stdout,
             stderr,
             exit_code,
+            status,
             ..
-        } => (stdout, stderr, exit_code),
+        } => (stdout, stderr, exit_code, status),
         other => panic!("expected CommandFailed, got: {other:?}"),
     };
     let out = git_spawn::CommandOutput {
-        stdout: stdout.into_bytes(),
+        stdout,
         stderr,
+        status,
         exit_code,
         success: false,
     };

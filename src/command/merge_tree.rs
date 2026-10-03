@@ -181,7 +181,8 @@ mod tests {
     fn output(stdout: Vec<u8>, exit_code: i32) -> CommandOutput {
         CommandOutput {
             stdout,
-            stderr: String::new(),
+            stderr: Vec::new(),
+            status: crate::output::ProcessStatus::Exited { code: exit_code },
             exit_code,
             success: exit_code == 0,
         }

@@ -33,7 +33,8 @@ pub struct CherryPickResult {
 ///
 /// let output = CommandOutput {
 ///     stdout: b"Auto-merging a.txt\nCONFLICT (content): Merge conflict in a.txt\n".to_vec(),
-///     stderr: String::new(),
+///     stderr: Vec::new(),
+///     status: git_spawn::ProcessStatus::Exited { code: 1 },
 ///     exit_code: 1,
 ///     success: false,
 /// };
@@ -42,7 +43,7 @@ pub struct CherryPickResult {
 /// ```
 #[must_use]
 pub fn parse_cherry_pick(output: &CommandOutput) -> CherryPickResult {
-    let raw = format!("{}{}", output.stdout_str(), output.stderr);
+    let raw = format!("{}{}", output.stdout_str(), output.stderr_str());
     CherryPickResult {
         conflicts: raw.contains("CONFLICT"),
         raw,
@@ -56,7 +57,10 @@ mod tests {
     fn output(stdout: &str, stderr: &str, success: bool) -> CommandOutput {
         CommandOutput {
             stdout: stdout.as_bytes().to_vec(),
-            stderr: stderr.to_string(),
+            stderr: stderr.as_bytes().to_vec(),
+            status: crate::output::ProcessStatus::Exited {
+                code: i32::from(!success),
+            },
             exit_code: i32::from(!success),
             success,
         }

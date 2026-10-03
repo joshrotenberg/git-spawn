@@ -195,6 +195,15 @@ documents a nonzero status as ordinary control flow. It returns the captured
 stdout, stderr, and exact exit status for every normally completed process;
 spawn, I/O, and timeout failures remain errors.
 
+The following API changes are unreleased. When migrating code that reads output, `CommandOutput::stdout` and
+`CommandOutput::stderr` are now raw `Vec<u8>` fields. Use `stdout_str()` or
+`stderr_str()` for an explicit lossy text view. `CommandOutput::status` records
+`ProcessStatus::Exited`, `Signaled`, or `Unknown`; `exit_code` remains available
+for callers that only need a numeric code and is `-1` when none exists.
+`Error::CommandFailed` likewise preserves both byte streams and the status.
+Its `command` field remains available for explicit inspection, while formatting
+an error omits commands and captured output.
+
 ```rust,no_run
 use git_spawn::{GitCommand, Repository};
 
@@ -301,22 +310,63 @@ let out = command
 # }
 ```
 
-### Timeouts, env, working dir
+### Cancellation, capture limits, input, and environment
+
+Stdin defaults to EOF in both timed and untimed execution. Select
+`stdin_bytes(...)` for a byte payload or `stdin_inherit()` for interactive input.
+Environment updates apply only to the child; `env_remove(...)` removes an
+inherited variable without changing the parent's environment. Updates are
+ordered, so the last set/remove wins using the operating system's key semantics.
 
 ```rust
 use std::time::Duration;
-use git_spawn::{GitCommand, Repository};
+use git_spawn::{CancellationToken, GitCommand, OutputLimits, Repository};
 
-async fn careful_fetch() -> git_spawn::Result<()> {
+async fn careful_fetch(cancel: CancellationToken) -> git_spawn::Result<()> {
     let repo = Repository::open("/repo")?;
     let mut cmd = repo.fetch();
     cmd.remote("origin")
         .with_timeout(Duration::from_secs(30))
+        .cancellation_token(cancel)
+        .cleanup_timeout(Duration::from_secs(5))
+        .output_limits(OutputLimits {
+            stdout: Some(1024 * 1024),
+            stderr: Some(1024 * 1024),
+        })
+        .env_remove("GIT_DIR")
         .env("GIT_TERMINAL_PROMPT", "0");
     cmd.execute().await?;
     Ok(())
 }
 ```
+
+Keep a clone of the cancellation token in the caller. Request cancellation with
+`cancel()`, then await execution to receive `Error::Execution { failure }`.
+That failure identifies cancellation, timeout, input/read failure, or a capture
+limit and retains bounded partial bytes, observed child status, pipe EOF and
+truncation flags, and cleanup results. Capture limits are inclusive, enforced
+while reading, and unlimited unless explicitly configured. They bound retained
+payload bytes, not the allocator's overhead or the Git child's memory.
+
+Interruption requests termination of the owned Unix process group or Windows
+Job Object and awaits the direct child within the cleanup budget. Dropping a
+future requests termination but cannot await reaping. A successful termination
+request is not proof every descendant stopped; escaped descendants and abrupt
+parent death require caller/host handling. Successful completed invocations
+allow detached descendants to continue. Cancellation never implies rollback of
+a local or remote Git write.
+
+Trace events and normal error/output/executor formatting report metadata and
+omit argument strings, environment values, stdin, and captured bodies. Raw
+fields remain available for deliberate inspection under the caller's policy.
+Spawn errors are `Error::Io`; a missing working directory must not be mistaken
+for a missing Git executable. `find_git()` remains an explicit discovery helper.
+
+Migration also changes `CommandExecutor::stdin` to `StdinMode` and its `env`
+field to ordered `(key, Option<value>)` updates. Prefer the builder methods.
+Match `Error::Execution` for runtime timeout/cancellation; `Error::Timeout`
+remains a legacy manually constructible variant. These changes require a
+compatible version boundary before publishing.
 
 ## Feature flags
 

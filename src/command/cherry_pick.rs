@@ -205,7 +205,8 @@ mod tests {
     fn output(stdout: &str) -> CommandOutput {
         CommandOutput {
             stdout: stdout.as_bytes().to_vec(),
-            stderr: String::new(),
+            stderr: Vec::new(),
+            status: crate::output::ProcessStatus::Exited { code: 0 },
             exit_code: 0,
             success: true,
         }

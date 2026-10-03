@@ -153,7 +153,7 @@ impl BisectCommand {
         if matches!(self.action, BisectAction::Run(_) | BisectAction::Log) {
             return None;
         }
-        let combined = format!("{}\n{}", output.stdout_str(), output.stderr);
+        let combined = format!("{}\n{}", output.stdout_str(), output.stderr_str());
         Some(crate::parse::parse_bisect(&combined))
     }
 }
@@ -232,7 +232,8 @@ mod tests {
     fn output(stdout: &str) -> CommandOutput {
         CommandOutput {
             stdout: stdout.as_bytes().to_vec(),
-            stderr: String::new(),
+            stderr: Vec::new(),
+            status: crate::output::ProcessStatus::Exited { code: 0 },
             exit_code: 0,
             success: true,
         }
@@ -267,7 +268,8 @@ mod tests {
         let c = BisectCommand::good(vec![]);
         let out = CommandOutput {
             stdout: Vec::new(),
-            stderr: "abc1234 is the first bad commit\n".to_string(),
+            stderr: b"abc1234 is the first bad commit\n".to_vec(),
+            status: crate::output::ProcessStatus::Exited { code: 0 },
             exit_code: 0,
             success: true,
         };
@@ -283,7 +285,9 @@ mod tests {
             stdout: Vec::new(),
             stderr:
                 "Bisecting: 1 revision left to test after this (roughly 1 step)\n[abc1234] c3\n"
-                    .to_string(),
+                    .as_bytes()
+                    .to_vec(),
+            status: crate::output::ProcessStatus::Exited { code: 0 },
             exit_code: 0,
             success: true,
         };

@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Preserve stdout and stderr bytes and process termination status in raw output
+  and checked command failures. Stderr is now `Vec<u8>`; explicit text helpers
+  provide lossy views.
+- Default subprocess stdin to EOF; expose explicit inherited input and ordered
+  child-only environment set/removal controls.
+- Report interrupted execution through structured `Error::Execution`, including
+  partial output, cleanup observations, and capture EOF/truncation flags.
+- Restrict automatic tracing and error/debug formatting to safe metadata.
+
+### Added
+
+- Cancellation tokens with awaited cleanup, configurable per-stream capture
+  limits, and a separate cleanup timeout.
+- Regression scenarios for cancellation, future drop, timeout, blocked input,
+  binary output, output limits, environment isolation, and diagnostics.
+
+### Fixed
+
+- Request process-group/Job Object cleanup on cancellation and I/O failure as
+  well as timeout; preserve uncertainty instead of implying write rollback.
+- Distinguish spawn I/O failures from the explicit Git discovery helper.
+- Handle terminated zombie descendants correctly in the Linux timeout test.
+- Update `async-trait` to 0.1.92 to resolve generated-code Clippy errors, and
+  update the `tokio-test` development dependency to 0.4.6.
+
 ## [0.3.0](https://github.com/joshrotenberg/git-spawn/compare/v0.2.1...v0.3.0) - 2026-08-01
 
 

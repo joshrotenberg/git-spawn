@@ -1,124 +1,72 @@
-//! Error types for git-spawn.
+//! Errors returned by git-spawn operations.
 //!
-//! All commands return [`Result<T, Error>`]. The [`enum@Error`] type is
-//! non-exhaustive in spirit: callers should match the variants they care
-//! about and fall through to a generic arm.
-//!
-//! ```no_run
-//! use git_spawn::{Error, GitCommand, Repository};
-//!
-//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let repo = Repository::open("/path/to/repo")?;
-//! match repo.log().max_count(10).execute().await {
-//!     Ok(out) => println!("{}", out.stdout_str()),
-//!     Err(Error::GitNotFound) => eprintln!("install git first"),
-//!     Err(Error::CommandFailed { stderr, exit_code, .. }) => {
-//!         eprintln!("git failed (exit {exit_code}):\n{stderr}")
-//!     }
-//!     Err(Error::Timeout { timeout_seconds }) => {
-//!         eprintln!("git didn't respond within {timeout_seconds}s")
-//!     }
-//!     Err(e) => eprintln!("unexpected: {e}"),
-//! }
-//! # Ok(())
-//! # }
-//! ```
-//!
-//! ## When each variant occurs
-//!
-//! - [`Error::GitNotFound`] — the OS reported *file not found* while spawning.
-//!   Install git or check `PATH`.
-//! - [`Error::CommandFailed`] — git exited non-zero. Read `stderr` for the
-//!   user-facing message; keep `stdout` for anything git wrote to the
-//!   fast-path.
-//! - [`Error::Timeout`] — the process exceeded the duration passed to
-//!   [`with_timeout`](crate::GitCommand::with_timeout).
-//! - [`Error::Io`] — OS-level failure unrelated to exit status (e.g. cwd
-//!   doesn't exist, pipe error while reading output).
-//! - [`Error::InvalidConfig`] — a builder was missing a required field
-//!   (for example [`MvCommand`](crate::MvCommand) with no source).
-//! - [`Error::NotARepository`] — [`Repository::open`](crate::Repository::open)
-//!   was called on a path that has no `.git`.
-//! - [`Error::ParseError`] — a parser in [`crate::parse`] could not decode
-//!   the captured output.
-//! - [`Error::UnsupportedVersion`] — reserved for future version gating; not
-//!   currently emitted.
-//! - [`Error::Custom`] — catch-all for cases the library cannot classify.
+//! Error messages and debug output contain only safe metadata. Callers that
+//! need command lines, paths, detailed diagnostics, or captured streams can
+//! inspect the public variant fields explicitly.
 
-use thiserror::Error;
+use crate::output::{CommandOutput, ProcessStatus};
+use std::fmt;
 
 /// Result type for git-spawn operations.
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Main error type for all git-spawn operations.
-#[derive(Error, Debug)]
 pub enum Error {
     /// Git binary not found in PATH.
-    #[error("git binary not found in PATH")]
     GitNotFound,
-
     /// Git version is below the minimum supported.
-    #[error("git version {found} is not supported (minimum: {minimum})")]
     UnsupportedVersion {
         /// Version reported by `git --version`.
         found: String,
         /// Minimum required version.
         minimum: String,
     },
-
-    /// A git command exited with a non-zero status.
-    #[error("git command failed: {command}")]
+    /// A git command exited unsuccessfully.
     CommandFailed {
-        /// The full command line that was executed.
+        /// Full command line, available for explicit inspection only.
         command: String,
-        /// Exit code returned by the command.
+        /// Legacy exit code; `-1` if the child did not exit normally.
         exit_code: i32,
-        /// Captured stdout.
-        stdout: String,
-        /// Captured stderr.
-        stderr: String,
+        /// Exact process termination status.
+        status: ProcessStatus,
+        /// Captured stdout bytes.
+        stdout: Vec<u8>,
+        /// Captured stderr bytes.
+        stderr: Vec<u8>,
     },
-
+    /// Execution was cancelled, timed out, or exceeded a capture limit.
+    Execution {
+        /// Partial output and cleanup details from the failed execution.
+        failure: Box<crate::execution::ExecutionFailure>,
+    },
     /// Failed to parse git output into a typed value.
-    #[error("failed to parse git output: {message}")]
     ParseError {
         /// Description of the parse failure.
         message: String,
     },
-
     /// Invalid configuration supplied to a builder.
-    #[error("invalid configuration: {message}")]
     InvalidConfig {
         /// Description of the misconfiguration.
         message: String,
     },
-
     /// Operation targeted a path that is not a git repository.
-    #[error("not a git repository: {path}")]
     NotARepository {
         /// Path that was expected to be a repo.
         path: String,
     },
-
     /// IO error while spawning or reading from a git process.
-    #[error("io error: {message}")]
     Io {
         /// Human-readable message.
         message: String,
         /// Underlying IO error.
-        #[source]
         source: std::io::Error,
     },
-
-    /// Command exceeded its configured timeout.
-    #[error("operation timed out after {timeout_seconds} seconds")]
+    /// Legacy timeout error.
     Timeout {
         /// Configured timeout in seconds.
         timeout_seconds: u64,
     },
-
     /// Generic error with a custom message.
-    #[error("{message}")]
     Custom {
         /// Custom error message.
         message: String,
@@ -126,47 +74,60 @@ pub enum Error {
 }
 
 impl Error {
-    /// Create a [`Error::CommandFailed`].
+    /// Create a synthetic command failure from an exit code and byte streams.
+    /// For actual child processes, use [`Self::from_command_output`].
     pub fn command_failed(
         command: impl Into<String>,
         exit_code: i32,
-        stdout: impl Into<String>,
-        stderr: impl Into<String>,
+        stdout: impl AsRef<[u8]>,
+        stderr: impl AsRef<[u8]>,
     ) -> Self {
         Self::CommandFailed {
             command: command.into(),
             exit_code,
-            stdout: stdout.into(),
-            stderr: stderr.into(),
+            status: ProcessStatus::Exited { code: exit_code },
+            stdout: stdout.as_ref().to_vec(),
+            stderr: stderr.as_ref().to_vec(),
         }
     }
 
-    /// Create a [`Error::ParseError`].
+    /// Preserve the complete output and termination status of a failed command.
+    pub fn from_command_output(command: impl Into<String>, output: CommandOutput) -> Self {
+        Self::CommandFailed {
+            command: command.into(),
+            exit_code: output.exit_code,
+            status: output.status,
+            stdout: output.stdout,
+            stderr: output.stderr,
+        }
+    }
+
+    /// Create a parse error.
     pub fn parse_error(message: impl Into<String>) -> Self {
         Self::ParseError {
             message: message.into(),
         }
     }
 
-    /// Create a [`Error::InvalidConfig`].
+    /// Create an invalid configuration error.
     pub fn invalid_config(message: impl Into<String>) -> Self {
         Self::InvalidConfig {
             message: message.into(),
         }
     }
 
-    /// Create a [`Error::NotARepository`].
+    /// Create a not-a-repository error.
     pub fn not_a_repository(path: impl Into<String>) -> Self {
         Self::NotARepository { path: path.into() }
     }
 
-    /// Create a [`Error::Timeout`].
+    /// Create a legacy timeout error.
     #[must_use]
     pub fn timeout(timeout_seconds: u64) -> Self {
         Self::Timeout { timeout_seconds }
     }
 
-    /// Create a [`Error::Custom`].
+    /// Create a custom error.
     pub fn custom(message: impl Into<String>) -> Self {
         Self::Custom {
             message: message.into(),
@@ -178,12 +139,75 @@ impl Error {
     pub fn category(&self) -> &'static str {
         match self {
             Self::GitNotFound | Self::UnsupportedVersion { .. } => "prerequisites",
-            Self::CommandFailed { .. } | Self::Timeout { .. } => "command",
+            Self::CommandFailed { .. } | Self::Execution { .. } | Self::Timeout { .. } => "command",
             Self::ParseError { .. } => "parsing",
             Self::InvalidConfig { .. } => "config",
             Self::NotARepository { .. } => "repository",
             Self::Io { .. } => "io",
             Self::Custom { .. } => "custom",
+        }
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::GitNotFound => f.write_str("git binary not found in PATH"),
+            Self::UnsupportedVersion { .. } => f.write_str("unsupported git version"),
+            Self::CommandFailed { status, .. } => write!(f, "git command failed ({status:?})"),
+            Self::Execution { failure } => fmt::Display::fmt(failure, f),
+            Self::ParseError { .. } => f.write_str("failed to parse git output"),
+            Self::InvalidConfig { .. } => f.write_str("invalid configuration"),
+            Self::NotARepository { .. } => f.write_str("not a git repository"),
+            Self::Io { .. } => f.write_str("io error while running git"),
+            Self::Timeout { timeout_seconds } => {
+                write!(f, "operation timed out after {timeout_seconds} seconds")
+            }
+            Self::Custom { .. } => f.write_str("git operation failed"),
+        }
+    }
+}
+
+impl fmt::Debug for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::GitNotFound => f.write_str("GitNotFound"),
+            Self::UnsupportedVersion { .. } => f.write_str("UnsupportedVersion"),
+            Self::CommandFailed {
+                exit_code,
+                status,
+                stdout,
+                stderr,
+                ..
+            } => f
+                .debug_struct("CommandFailed")
+                .field("exit_code", exit_code)
+                .field("status", status)
+                .field("stdout_len", &stdout.len())
+                .field("stderr_len", &stderr.len())
+                .finish(),
+            Self::Execution { failure } => f
+                .debug_struct("Execution")
+                .field("failure", failure)
+                .finish(),
+            Self::ParseError { .. } => f.write_str("ParseError"),
+            Self::InvalidConfig { .. } => f.write_str("InvalidConfig"),
+            Self::NotARepository { .. } => f.write_str("NotARepository"),
+            Self::Io { .. } => f.write_str("Io"),
+            Self::Timeout { timeout_seconds } => f
+                .debug_struct("Timeout")
+                .field("timeout_seconds", timeout_seconds)
+                .finish(),
+            Self::Custom { .. } => f.write_str("Custom"),
+        }
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Io { source, .. } => Some(source),
+            _ => None,
         }
     }
 }
@@ -213,9 +237,79 @@ mod tests {
     }
 
     #[test]
-    fn from_io_error() {
-        let io = std::io::Error::new(std::io::ErrorKind::NotFound, "nope");
-        let err: Error = io.into();
-        assert!(matches!(err, Error::Io { .. }));
+    fn command_failure_preserves_bytes_and_hides_payloads() {
+        let output = CommandOutput {
+            stdout: b"private-stdout\xff".to_vec(),
+            stderr: b"private-stderr\xfe".to_vec(),
+            status: ProcessStatus::Signaled {
+                signal: 9,
+                core_dumped: false,
+            },
+            exit_code: -1,
+            success: false,
+        };
+        let error = Error::from_command_output("secret-command", output);
+        let Error::CommandFailed {
+            command,
+            exit_code,
+            status,
+            stdout,
+            stderr,
+        } = &error
+        else {
+            panic!("expected command failure");
+        };
+        assert_eq!(command, "secret-command");
+        assert_eq!(*exit_code, -1);
+        assert_eq!(
+            *status,
+            ProcessStatus::Signaled {
+                signal: 9,
+                core_dumped: false,
+            }
+        );
+        assert_eq!(stdout, b"private-stdout\xff");
+        assert_eq!(stderr, b"private-stderr\xfe");
+        for rendered in [format!("{error}"), format!("{error:?}")] {
+            assert!(!rendered.contains("secret-command"));
+            assert!(!rendered.contains("private-stdout"));
+            assert!(!rendered.contains("private-stderr"));
+        }
+    }
+
+    #[test]
+    fn all_other_errors_hide_messages() {
+        let errors = [
+            Error::parse_error("secret"),
+            Error::invalid_config("secret"),
+            Error::not_a_repository("secret"),
+            Error::custom("secret"),
+            Error::UnsupportedVersion {
+                found: "secret".into(),
+                minimum: "secret".into(),
+            },
+            std::io::Error::other("secret").into(),
+        ];
+        for error in errors {
+            assert!(!format!("{error}").contains("secret"));
+            assert!(!format!("{error:?}").contains("secret"));
+        }
+    }
+
+    #[test]
+    fn synthetic_command_failure_preserves_binary_stderr() {
+        let error = Error::command_failed("private", 2, b"out\xff", b"err\xfe");
+        let Error::CommandFailed {
+            status,
+            stdout,
+            stderr,
+            ..
+        } = error
+        else {
+            panic!("expected command failure");
+        };
+        assert_eq!(status, ProcessStatus::Exited { code: 2 });
+        assert_eq!(stdout, b"out\xff");
+        assert_eq!(stderr, b"err\xfe");
     }
 }

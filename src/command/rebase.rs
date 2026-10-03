@@ -126,7 +126,7 @@ impl RebaseCommand {
         if self.abort || self.cont || self.skip || self.quit {
             return None;
         }
-        let combined = format!("{}{}", output.stdout_str(), output.stderr);
+        let combined = format!("{}{}", output.stdout_str(), output.stderr_str());
         Some(crate::parse::parse_rebase(&combined))
     }
 }
@@ -197,7 +197,8 @@ mod tests {
     fn output(stdout: &str) -> CommandOutput {
         CommandOutput {
             stdout: stdout.as_bytes().to_vec(),
-            stderr: String::new(),
+            stderr: Vec::new(),
+            status: crate::output::ProcessStatus::Exited { code: 0 },
             exit_code: 0,
             success: true,
         }

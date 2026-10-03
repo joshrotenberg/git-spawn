@@ -21,7 +21,7 @@ impl MkTreeCommand {
     }
     /// Supply `ls-tree` formatted bytes on stdin.
     pub fn stdin(&mut self, v: impl Into<Vec<u8>>) -> &mut Self {
-        self.executor.stdin = Some(v.into());
+        self.executor.stdin = crate::command::StdinMode::Bytes(v.into());
         self
     }
     /// Allow missing objects.
