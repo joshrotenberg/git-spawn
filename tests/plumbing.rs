@@ -116,7 +116,9 @@ async fn cat_file_type_checked_rejects_empty_values() {
             .map(|_| String::new()),
     ] {
         let err = empty_type.unwrap_err();
-        assert!(err.to_string().contains("non-empty expected type"));
+        assert!(
+            matches!(err, Error::InvalidConfig { message } if message.contains("non-empty expected type"))
+        );
     }
 
     for empty_object in [
@@ -131,7 +133,9 @@ async fn cat_file_type_checked_rejects_empty_values() {
             .map(|_| String::new()),
     ] {
         let err = empty_object.unwrap_err();
-        assert!(err.to_string().contains("non-empty object"));
+        assert!(
+            matches!(err, Error::InvalidConfig { message } if message.contains("non-empty object"))
+        );
     }
 }
 

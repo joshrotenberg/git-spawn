@@ -119,13 +119,22 @@
 //! - **Raw output by default**; typed parsing is opt-in via the `parse` module
 //! - **Escape hatches everywhere** so the crate is useful for flags we haven't
 //!   wrapped yet
-//! - **No unsafe code**, no global state, no hidden config
+//! - No global mutable configuration; small platform-specific unsafe blocks
+//!   implement process-group signaling and Windows process containment
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![warn(missing_docs)]
 
 pub mod command;
 pub mod error;
+pub mod execution;
+pub mod output;
+pub use command::StdinMode;
+pub use execution::{
+    CancellationToken, CaptureReport, CleanupReport, ExecutionFailure, ExecutionFailureKind,
+    OutputLimits, OutputStream,
+};
+pub use output::ProcessStatus;
 #[cfg(feature = "parse")]
 #[cfg_attr(docsrs, doc(cfg(feature = "parse")))]
 pub mod parse;

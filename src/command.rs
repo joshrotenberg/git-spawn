@@ -90,7 +90,9 @@
 //! [`global_args`](GitCommand::global_args), [`arg`](GitCommand::arg),
 //! [`args`](GitCommand::args), [`flag`](GitCommand::flag), and
 //! [`option`](GitCommand::option). Git-global args are prepended **before** the
-//! subcommand, while raw args are appended **after** its typed flags:
+//! subcommand, while raw args are appended **after all** typed arguments,
+//! including any `--` separator and paths. Raw options must precede path tails;
+//! use the ordered executor when composing that complete argv yourself:
 //!
 //! ```no_run
 //! # async fn ex() -> git_spawn::Result<()> {
@@ -104,16 +106,15 @@
 //! ```
 
 use crate::error::{Error, Result};
+use crate::execution::{CancellationToken, OutputLimits};
+pub use crate::output::{CommandOutput, ProcessStatus};
 use async_trait::async_trait;
-use std::borrow::Cow;
-use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
 use std::process::Stdio;
-use std::time::Duration;
-use tokio::io::AsyncWriteExt;
+use std::time::{Duration, Instant};
 use tokio::process::Command as TokioCommand;
-use tracing::{debug, error, instrument, trace, warn};
+use tracing::{debug, error, trace};
 
 pub mod add;
 pub mod am;
@@ -254,7 +255,11 @@ pub trait GitCommand {
         self.get_executor().execute_command_os_unchecked(args).await
     }
 
-    /// Append a single raw argument.
+    /// Append a single raw argument after all typed arguments, including paths.
+    ///
+    /// A raw flag after a typed `--` is a pathspec, not an option. For commands
+    /// mixing raw options and paths, supply the entire ordered raw tail or use
+    /// [`CommandExecutor::execute_command_os_unchecked`].
     fn arg<S: AsRef<OsStr>>(&mut self, arg: S) -> &mut Self {
         self.get_executor_mut().add_arg(arg);
         self
@@ -309,12 +314,20 @@ pub trait GitCommand {
 
     /// Set an environment variable for this invocation.
     fn env<K: Into<OsString>, V: Into<OsString>>(&mut self, key: K, value: V) -> &mut Self {
-        self.get_executor_mut().env.insert(key.into(), value.into());
+        self.get_executor_mut()
+            .env
+            .push((key.into(), Some(value.into())));
         self
     }
 
-    /// Cap execution time. On expiry the process is killed and
-    /// [`Error::Timeout`] is returned.
+    /// Remove an inherited variable in this child only. Last update wins.
+    fn env_remove(&mut self, key: impl Into<OsString>) -> &mut Self {
+        self.get_executor_mut().env.push((key.into(), None));
+        self
+    }
+
+    /// Cap execution time. Expiry returns [`Error::Execution`] with a timeout
+    /// reason, partial capture, and cleanup observations; it does not undo Git.
     fn with_timeout(&mut self, timeout: Duration) -> &mut Self {
         self.get_executor_mut().timeout = Some(timeout);
         self
@@ -329,16 +342,68 @@ pub trait GitCommand {
     /// Supply owned bytes to the subprocess's stdin.
     ///
     /// Calling this with an empty value still configures a pipe, which is
-    /// immediately closed after writing. Not calling it leaves stdin
-    /// unconfigured, preserving the executor's existing behavior.
+    /// immediately closed after writing. Without explicit configuration stdin
+    /// is null (EOF), for both timed and untimed execution.
     fn stdin_bytes(&mut self, bytes: impl Into<Vec<u8>>) -> &mut Self {
-        self.get_executor_mut().stdin = Some(bytes.into());
+        self.get_executor_mut().stdin = StdinMode::Bytes(bytes.into());
+        self
+    }
+
+    /// Supply EOF on stdin (the default).
+    fn stdin_null(&mut self) -> &mut Self {
+        self.get_executor_mut().stdin = StdinMode::Null;
+        self
+    }
+
+    /// Explicitly inherit the parent's stdin.
+    fn stdin_inherit(&mut self) -> &mut Self {
+        self.get_executor_mut().stdin = StdinMode::Inherit;
+        self
+    }
+
+    /// Cancel through this token, then await execution for cleanup evidence.
+    fn cancellation_token(&mut self, token: CancellationToken) -> &mut Self {
+        self.get_executor_mut().cancellation = Some(token);
+        self
+    }
+
+    /// Bound each captured output stream while it is being read.
+    fn output_limits(&mut self, limits: OutputLimits) -> &mut Self {
+        self.get_executor_mut().output_limits = limits;
+        self
+    }
+
+    /// Bound cleanup after an interruption, independently of execution time.
+    fn cleanup_timeout(&mut self, timeout: Duration) -> &mut Self {
+        self.get_executor_mut().cleanup_timeout = timeout;
         self
     }
 }
 
+/// Explicit subprocess input policy. The default supplies EOF.
+#[derive(Clone, Default)]
+pub enum StdinMode {
+    /// Connect stdin to the null device.
+    #[default]
+    Null,
+    /// Inherit the parent's input descriptor.
+    Inherit,
+    /// Write these exact bytes and close the input pipe.
+    Bytes(Vec<u8>),
+}
+
+impl std::fmt::Debug for StdinMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Null => f.write_str("Null"),
+            Self::Inherit => f.write_str("Inherit"),
+            Self::Bytes(bytes) => f.debug_struct("Bytes").field("len", &bytes.len()).finish(),
+        }
+    }
+}
+
 /// Shared machinery used by every [`GitCommand`] to spawn `git`.
-#[derive(Debug, Clone, Default)]
+#[derive(Clone)]
 pub struct CommandExecutor {
     /// Ordered Git-global arguments inserted before the typed subcommand.
     pub global_args: Vec<OsString>,
@@ -346,12 +411,51 @@ pub struct CommandExecutor {
     pub raw_args: Vec<OsString>,
     /// Working directory for the subprocess.
     pub cwd: Option<PathBuf>,
-    /// Extra environment variables.
-    pub env: HashMap<OsString, OsString>,
+    /// Ordered child-only environment updates: `None` removes a variable.
+    /// The last update wins using the platform's environment-key semantics.
+    pub env: Vec<(OsString, Option<OsString>)>,
     /// Optional execution timeout.
     pub timeout: Option<Duration>,
-    /// Bytes to pipe to stdin. `Some([])` is distinct from no configured stdin.
-    pub stdin: Option<Vec<u8>>,
+    /// Input policy, defaulting to EOF.
+    pub stdin: StdinMode,
+    /// Optional explicit cancellation token.
+    pub cancellation: Option<CancellationToken>,
+    /// Capture budgets; unlimited unless configured by the caller.
+    pub output_limits: OutputLimits,
+    /// Maximum time to await cleanup after interruption (default five seconds).
+    pub cleanup_timeout: Duration,
+}
+
+impl Default for CommandExecutor {
+    fn default() -> Self {
+        Self {
+            global_args: Vec::new(),
+            raw_args: Vec::new(),
+            cwd: None,
+            env: Vec::new(),
+            timeout: DEFAULT_COMMAND_TIMEOUT,
+            stdin: StdinMode::Null,
+            cancellation: None,
+            output_limits: OutputLimits::default(),
+            cleanup_timeout: Duration::from_secs(5),
+        }
+    }
+}
+
+impl std::fmt::Debug for CommandExecutor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CommandExecutor")
+            .field("global_argument_count", &self.global_args.len())
+            .field("raw_argument_count", &self.raw_args.len())
+            .field("has_cwd", &self.cwd.is_some())
+            .field("environment_update_count", &self.env.len())
+            .field("timeout", &self.timeout)
+            .field("stdin", &self.stdin)
+            .field("has_cancellation_token", &self.cancellation.is_some())
+            .field("output_limits", &self.output_limits)
+            .field("cleanup_timeout", &self.cleanup_timeout)
+            .finish()
+    }
 }
 
 impl CommandExecutor {
@@ -371,7 +475,14 @@ impl CommandExecutor {
     /// Builder: set an environment variable.
     #[must_use]
     pub fn with_env(mut self, key: impl Into<OsString>, value: impl Into<OsString>) -> Self {
-        self.env.insert(key.into(), value.into());
+        self.env.push((key.into(), Some(value.into())));
+        self
+    }
+
+    /// Builder: remove a variable in the child without changing the parent.
+    #[must_use]
+    pub fn env_remove(mut self, key: impl Into<OsString>) -> Self {
+        self.env.push((key.into(), None));
         self
     }
 
@@ -385,7 +496,42 @@ impl CommandExecutor {
     /// Builder: supply owned bytes to the subprocess's stdin.
     #[must_use]
     pub fn stdin_bytes(mut self, bytes: impl Into<Vec<u8>>) -> Self {
-        self.stdin = Some(bytes.into());
+        self.stdin = StdinMode::Bytes(bytes.into());
+        self
+    }
+
+    /// Builder: supply EOF on stdin (the default).
+    #[must_use]
+    pub fn stdin_null(mut self) -> Self {
+        self.stdin = StdinMode::Null;
+        self
+    }
+
+    /// Builder: explicitly inherit the parent's stdin.
+    #[must_use]
+    pub fn stdin_inherit(mut self) -> Self {
+        self.stdin = StdinMode::Inherit;
+        self
+    }
+
+    /// Builder: request cancellation through a token, then await this call.
+    #[must_use]
+    pub fn cancellation_token(mut self, token: CancellationToken) -> Self {
+        self.cancellation = Some(token);
+        self
+    }
+
+    /// Builder: bound captured stdout and stderr independently.
+    #[must_use]
+    pub fn output_limits(mut self, limits: OutputLimits) -> Self {
+        self.output_limits = limits;
+        self
+    }
+
+    /// Builder: bound cleanup after cancellation, timeout, or I/O failure.
+    #[must_use]
+    pub fn cleanup_timeout(mut self, timeout: Duration) -> Self {
+        self.cleanup_timeout = timeout;
         self
     }
 
@@ -449,14 +595,6 @@ impl CommandExecutor {
     /// Spawn `git` with global args, `args`, then trailing raw args.
     ///
     /// Non-zero exit codes become [`Error::CommandFailed`].
-    #[instrument(
-        name = "git.command",
-        skip(self, args),
-        fields(
-            cwd = self.cwd.as_ref().map(|p| p.display().to_string()),
-            timeout_secs = self.timeout.map(|t| t.as_secs()),
-        )
-    )]
     pub async fn execute_command(&self, args: Vec<String>) -> Result<CommandOutput> {
         self.execute_command_os(args.into_iter().map(OsString::from).collect())
             .await
@@ -495,12 +633,13 @@ impl CommandExecutor {
         let output = self.execute_command_unchecked_inner(&all_args).await?;
 
         if !is_expected(&output) {
-            return Err(Error::command_failed(
-                render_command(&all_args),
-                output.exit_code,
-                String::from_utf8_lossy(&output.stdout).into_owned(),
-                output.stderr,
-            ));
+            // The raw command remains available programmatically. Error Display
+            // and Debug deliberately omit arguments and captured bodies.
+            let command = std::iter::once("git".into())
+                .chain(all_args.iter().map(|arg| arg.to_string_lossy()))
+                .collect::<Vec<_>>()
+                .join(" ");
+            return Err(Error::from_command_output(command, output));
         }
 
         Ok(output)
@@ -514,14 +653,6 @@ impl CommandExecutor {
     /// [`CommandOutput`]; inspect [`CommandOutput::exit_code`] or
     /// [`CommandOutput::success`] to classify it. Spawn, I/O, and timeout
     /// failures remain errors.
-    #[instrument(
-        name = "git.command.unchecked",
-        skip(self, args),
-        fields(
-            cwd = self.cwd.as_ref().map(|p| p.display().to_string()),
-            timeout_secs = self.timeout.map(|t| t.as_secs()),
-        )
-    )]
     pub async fn execute_command_unchecked(&self, args: Vec<String>) -> Result<CommandOutput> {
         self.execute_command_os_unchecked(args.into_iter().map(OsString::from).collect())
             .await
@@ -542,26 +673,43 @@ impl CommandExecutor {
             .collect()
     }
 
+    #[tracing::instrument(name = "git.command", skip_all, fields(
+        argument_count = all_args.len(),
+        timeout_ms = self.timeout.map(|duration| duration.as_millis() as u64),
+    ))]
     async fn execute_command_unchecked_inner(
         &self,
         all_args: &[OsString],
     ) -> Result<CommandOutput> {
-        trace!(args = ?all_args, "executing git command");
+        trace!(argument_count = all_args.len(), "executing git command");
 
-        let result = if let Some(t) = self.timeout {
-            self.execute_with_timeout(all_args, t).await
-        } else {
-            self.execute_internal(all_args).await
+        let started = Instant::now();
+        let input = match &self.stdin {
+            StdinMode::Bytes(bytes) => Some(bytes.as_slice()),
+            StdinMode::Null | StdinMode::Inherit => None,
         };
+        let result = crate::execution::run(
+            self.build_command(all_args),
+            input,
+            self.timeout,
+            self.cancellation.as_ref(),
+            self.output_limits,
+            self.cleanup_timeout,
+        )
+        .await;
 
         match &result {
             Ok(output) => debug!(
                 exit_code = output.exit_code,
+                status = ?output.status,
+                duration_ms = started.elapsed().as_millis() as u64,
                 stdout_len = output.stdout.len(),
                 stderr_len = output.stderr.len(),
                 "command completed"
             ),
-            Err(e) => error!(error = %e, "command failed"),
+            Err(e) => {
+                error!(category = e.category(), error = %e, duration_ms = started.elapsed().as_millis() as u64, "command failed")
+            }
         }
 
         result
@@ -572,7 +720,7 @@ impl CommandExecutor {
     /// On Unix the child is placed in its own process group so a timeout can
     /// signal the whole group. git spawns children of its own (pack processes,
     /// credential/askpass helpers, hooks) that would be orphaned if we only
-    /// killed the direct child. On Windows, timed commands are spawned
+    /// killed the direct child. On Windows, commands are spawned
     /// suspended, assigned to a kill-on-close Job Object, and then resumed.
     /// `kill_on_drop` is a
     /// belt-and-suspenders guard:
@@ -584,15 +732,24 @@ impl CommandExecutor {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
-        if self.stdin.is_some() {
-            cmd.stdin(Stdio::piped());
-        }
+        cmd.stdin(match self.stdin {
+            StdinMode::Null => Stdio::null(),
+            StdinMode::Inherit => Stdio::inherit(),
+            StdinMode::Bytes(_) => Stdio::piped(),
+        });
 
         if let Some(dir) = &self.cwd {
             cmd.current_dir(dir);
         }
-        for (k, v) in &self.env {
-            cmd.env(k, v);
+        for (key, value) in &self.env {
+            match value {
+                Some(value) => {
+                    cmd.env(key, value);
+                }
+                None => {
+                    cmd.env_remove(key);
+                }
+            }
         }
 
         // Run git as the leader of a new process group (pgid == child pid).
@@ -602,387 +759,13 @@ impl CommandExecutor {
         cmd.kill_on_drop(true);
         cmd
     }
-
-    /// Decode a normally finished process into [`CommandOutput`].
-    fn finish(output: std::process::Output) -> CommandOutput {
-        let stdout = output.stdout;
-        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-        let exit_code = output.status.code().unwrap_or(-1);
-        let success = output.status.success();
-
-        CommandOutput {
-            stdout,
-            stderr,
-            exit_code,
-            success,
-        }
-    }
-
-    async fn execute_internal(&self, all_args: &[OsString]) -> Result<CommandOutput> {
-        if self.stdin.is_none() {
-            let output = self
-                .build_command(all_args)
-                .output()
-                .await
-                .map_err(map_spawn_error)?;
-            return Ok(Self::finish(output));
-        }
-
-        let child = self
-            .build_command(all_args)
-            .spawn()
-            .map_err(map_spawn_error)?;
-        let output = self.wait_with_output(child).await.map_err(map_wait_error)?;
-        Ok(Self::finish(output))
-    }
-
-    async fn execute_with_timeout(
-        &self,
-        all_args: &[OsString],
-        timeout_duration: Duration,
-    ) -> Result<CommandOutput> {
-        let mut command = self.build_command(all_args);
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            use windows_sys::Win32::System::Threading::CREATE_SUSPENDED;
-
-            // Assignment after a normally started spawn has a window in which
-            // git can create descendants outside the Job Object. Suspending
-            // the primary thread closes that window: no user code runs until
-            // containment is fully configured below.
-            command.as_std_mut().creation_flags(CREATE_SUSPENDED);
-        }
-        let child = command.spawn().map_err(map_spawn_error)?;
-        #[cfg(windows)]
-        let job = WindowsJob::assign(&child).map_err(|error| {
-            map_job_error("failed to contain git in a Windows Job Object", error)
-        })?;
-        #[cfg(windows)]
-        resume_process(&child)
-            .map_err(|error| map_job_error("failed to resume contained git process", error))?;
-
-        // Capture the pid (== process-group id on Unix) before `wait_with_output`
-        // takes ownership of the child; we need it to signal the group on timeout.
-        let pid = child.id();
-
-        match tokio::time::timeout(timeout_duration, self.wait_with_output(child)).await {
-            Ok(Ok(output)) => {
-                #[cfg(windows)]
-                job.disarm().map_err(|error| {
-                    map_job_error(
-                        "failed to release successful git descendants from Windows timeout cleanup",
-                        error,
-                    )
-                })?;
-                Ok(Self::finish(output))
-            }
-            Ok(Err(e)) => Err(map_wait_error(e)),
-            Err(_) => {
-                // The `wait_with_output` future has been dropped, so the direct
-                // child is being killed via `kill_on_drop`. Also signal the whole
-                // group to reap any grandchildren git spawned.
-                if let Some(pid) = pid {
-                    kill_process_group(pid);
-                }
-                #[cfg(windows)]
-                job.terminate();
-                warn!(
-                    timeout_secs = timeout_duration.as_secs(),
-                    "command timed out"
-                );
-                Err(Error::timeout(timeout_duration.as_secs()))
-            }
-        }
-    }
-
-    /// Write configured stdin while stdout/stderr are drained, close the pipe,
-    /// and wait for the process. Writing concurrently avoids pipe-buffer
-    /// deadlocks for commands that produce output before consuming all input.
-    async fn wait_with_output(
-        &self,
-        mut child: tokio::process::Child,
-    ) -> std::io::Result<std::process::Output> {
-        let Some(bytes) = self.stdin.as_deref() else {
-            return child.wait_with_output().await;
-        };
-
-        let mut stdin = child.stdin.take().ok_or_else(|| {
-            std::io::Error::other("git stdin was configured but no pipe was available")
-        })?;
-        let write_stdin = async move {
-            stdin.write_all(bytes).await?;
-            stdin.shutdown().await
-        };
-        let ((), output) = tokio::try_join!(write_stdin, child.wait_with_output())?;
-        Ok(output)
-    }
-}
-
-fn render_command(args: &[OsString]) -> String {
-    let rendered = args
-        .iter()
-        .map(|arg| arg.to_string_lossy())
-        .collect::<Vec<_>>()
-        .join(" ");
-    format!("git {rendered}")
-}
-
-/// Map a spawn error to [`Error::GitNotFound`] when the binary is missing,
-/// otherwise to [`Error::Io`].
-fn map_spawn_error(e: std::io::Error) -> Error {
-    if e.kind() == std::io::ErrorKind::NotFound {
-        Error::GitNotFound
-    } else {
-        Error::Io {
-            message: format!("failed to spawn git: {e}"),
-            source: e,
-        }
-    }
-}
-
-fn map_wait_error(e: std::io::Error) -> Error {
-    Error::Io {
-        message: format!("failed to run git: {e}"),
-        source: e,
-    }
-}
-
-#[cfg(windows)]
-fn map_job_error(message: &str, source: std::io::Error) -> Error {
-    Error::Io {
-        message: format!("{message}: {source}"),
-        source,
-    }
-}
-
-/// Kill the process group led by `pid`.
-///
-/// The executor spawns git with `process_group(0)`, so the child's pid is also
-/// its process-group id. Signalling the negative pgid reaches every process in
-/// the group, including the pack/credential/hook children git spawned.
-#[cfg(unix)]
-fn kill_process_group(pid: u32) {
-    // A pid that overflows `i32` cannot name a real process group; skip it.
-    let Ok(pgid) = i32::try_from(pid) else {
-        return;
-    };
-    // SAFETY: `kill(2)` with a negative pid signals a process group. It has no
-    // memory-safety implications; a stale pgid simply returns `ESRCH`.
-    unsafe {
-        libc::kill(-pgid, libc::SIGKILL);
-    }
-}
-
-/// Windows uses a Job Object instead of a process group; this remains a no-op
-/// so the common timeout path can retain the Unix group signal.
-#[cfg(not(unix))]
-fn kill_process_group(_pid: u32) {}
-
-/// Resume the primary thread of a process created with `CREATE_SUSPENDED`.
-///
-/// `std::process::Child` retains the process handle but not the primary thread
-/// handle returned by `CreateProcessW`, so locate that (still-unexecuted)
-/// thread by process id. Before resume the process can only have this one
-/// thread, making assignment to the Job Object atomic with respect to any
-/// descendant creation.
-#[cfg(windows)]
-fn resume_process(child: &tokio::process::Child) -> std::io::Result<()> {
-    use std::mem::{size_of, zeroed};
-    use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
-    use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
-    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
-        CreateToolhelp32Snapshot, TH32CS_SNAPTHREAD, THREADENTRY32, Thread32First, Thread32Next,
-    };
-    use windows_sys::Win32::System::Threading::{OpenThread, ResumeThread, THREAD_SUSPEND_RESUME};
-
-    let pid = child
-        .id()
-        .ok_or_else(|| std::io::Error::other("spawned git process has no process id"))?;
-    // SAFETY: a system-wide thread snapshot needs no pointer arguments. The
-    // returned handle is wrapped immediately and closed on every return path.
-    let raw_snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) };
-    if raw_snapshot == INVALID_HANDLE_VALUE {
-        return Err(std::io::Error::last_os_error());
-    }
-    // SAFETY: CreateToolhelp32Snapshot returned a newly owned valid handle.
-    let snapshot = unsafe { OwnedHandle::from_raw_handle(raw_snapshot) };
-    // SAFETY: THREADENTRY32 is a plain C data structure whose required size
-    // field is initialized before the enumeration calls.
-    let mut entry: THREADENTRY32 = unsafe { zeroed() };
-    entry.dwSize = size_of::<THREADENTRY32>() as u32;
-    // SAFETY: snapshot is valid and entry points to initialized writable data.
-    let mut found = unsafe { Thread32First(snapshot.as_raw_handle(), &mut entry) } != 0;
-    while found {
-        if entry.th32OwnerProcessID == pid {
-            // SAFETY: the thread id came from the live snapshot. The returned
-            // handle is either null or newly owned by this function.
-            let raw_thread = unsafe { OpenThread(THREAD_SUSPEND_RESUME, 0, entry.th32ThreadID) };
-            if raw_thread.is_null() {
-                return Err(std::io::Error::last_os_error());
-            }
-            // SAFETY: OpenThread returned a newly owned valid handle.
-            let thread = unsafe { OwnedHandle::from_raw_handle(raw_thread) };
-            // SAFETY: thread is valid and was created suspended by this module.
-            if unsafe { ResumeThread(thread.as_raw_handle()) } == u32::MAX {
-                return Err(std::io::Error::last_os_error());
-            }
-            return Ok(());
-        }
-        // SAFETY: arguments remain valid for the next enumeration step.
-        found = unsafe { Thread32Next(snapshot.as_raw_handle(), &mut entry) } != 0;
-    }
-
-    Err(std::io::Error::new(
-        std::io::ErrorKind::NotFound,
-        "could not find the suspended git process thread",
-    ))
-}
-
-/// Owns a Windows Job Object containing one git process and all descendants.
-///
-/// `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` makes setup, cancellation, error, and
-/// timeout paths safe. Successful completion disarms that limit so a detached
-/// helper can outlive Git, matching the Unix behavior. The timeout path also
-/// calls `TerminateJobObject` so descendants stop before the guard is dropped,
-/// even when wait and timeout race.
-#[cfg(windows)]
-struct WindowsJob {
-    handle: std::os::windows::io::OwnedHandle,
-}
-
-#[cfg(windows)]
-impl WindowsJob {
-    fn assign(child: &tokio::process::Child) -> std::io::Result<Self> {
-        use std::os::windows::io::{AsRawHandle, FromRawHandle};
-        use std::ptr::null;
-        use windows_sys::Win32::System::JobObjects::{AssignProcessToJobObject, CreateJobObjectW};
-
-        // SAFETY: null attributes/name create a private job with a valid owned
-        // handle on success. OwnedHandle closes it on every following path.
-        let raw_job = unsafe { CreateJobObjectW(null(), null()) };
-        if raw_job.is_null() {
-            return Err(std::io::Error::last_os_error());
-        }
-        // SAFETY: CreateJobObjectW returned a newly owned handle.
-        let handle = unsafe { std::os::windows::io::OwnedHandle::from_raw_handle(raw_job) };
-        let job = Self { handle };
-        job.set_kill_on_close(true)?;
-
-        // Descendants inherit job membership. Assignment happens immediately
-        // after spawn, before this executor performs any other async work.
-        let process = child.raw_handle().ok_or_else(|| {
-            std::io::Error::other("spawned git process has no Windows process handle")
-        })?;
-        let assigned = unsafe { AssignProcessToJobObject(job.handle.as_raw_handle(), process) };
-        if assigned == 0 {
-            return Err(std::io::Error::last_os_error());
-        }
-
-        Ok(job)
-    }
-
-    fn disarm(&self) -> std::io::Result<()> {
-        self.set_kill_on_close(false)
-    }
-
-    fn set_kill_on_close(&self, enabled: bool) -> std::io::Result<()> {
-        use std::mem::{size_of, zeroed};
-        use std::os::windows::io::AsRawHandle;
-        use std::ptr::addr_of;
-        use windows_sys::Win32::System::JobObjects::{
-            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-            JobObjectExtendedLimitInformation, SetInformationJobObject,
-        };
-
-        // SAFETY: the information structure and byte count match the requested
-        // JobObjectExtendedLimitInformation class.
-        let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { zeroed() };
-        if enabled {
-            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-        }
-        let configured = unsafe {
-            SetInformationJobObject(
-                self.handle.as_raw_handle(),
-                JobObjectExtendedLimitInformation,
-                addr_of!(info).cast(),
-                size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
-            )
-        };
-        if configured == 0 {
-            return Err(std::io::Error::last_os_error());
-        }
-        Ok(())
-    }
-
-    fn terminate(&self) {
-        use std::os::windows::io::AsRawHandle;
-        use windows_sys::Win32::System::JobObjects::TerminateJobObject;
-
-        // SAFETY: handle remains owned by self for the duration of the call.
-        // Failure is intentionally best-effort: dropping the kill-on-close job
-        // immediately afterwards provides the fallback cleanup path.
-        unsafe {
-            TerminateJobObject(self.handle.as_raw_handle(), 1);
-        }
-    }
-}
-
-/// Captured output from running a git command.
-#[derive(Debug, Clone)]
-pub struct CommandOutput {
-    /// Captured stdout as raw bytes.
-    ///
-    /// git output is not guaranteed to be valid UTF-8 — `cat-file` on a binary
-    /// blob, paths under unusual encodings, and `-z`/NUL-delimited formats all
-    /// produce bytes that lossy decoding would corrupt. The bytes are preserved
-    /// verbatim; use [`stdout_str`](Self::stdout_str) for a lossy text view or
-    /// [`stdout_bytes`](Self::stdout_bytes) for the raw slice.
-    pub stdout: Vec<u8>,
-    /// Captured stderr, decoded lossily as UTF-8 (git diagnostics are text).
-    pub stderr: String,
-    /// Exit code (`-1` if the process was terminated by a signal).
-    pub exit_code: i32,
-    /// Whether the process exited with status 0.
-    pub success: bool,
-}
-
-impl CommandOutput {
-    /// stdout as a raw byte slice. Use this for binary or non-UTF-8 output.
-    #[must_use]
-    pub fn stdout_bytes(&self) -> &[u8] {
-        &self.stdout
-    }
-
-    /// stdout decoded as UTF-8, lossily (invalid sequences become U+FFFD).
-    #[must_use]
-    pub fn stdout_str(&self) -> Cow<'_, str> {
-        String::from_utf8_lossy(&self.stdout)
-    }
-
-    /// stdout decoded lossily and split into lines.
-    #[must_use]
-    pub fn stdout_lines(&self) -> Vec<String> {
-        self.stdout_str().lines().map(ToOwned::to_owned).collect()
-    }
-
-    /// stderr split into lines.
-    #[must_use]
-    pub fn stderr_lines(&self) -> Vec<&str> {
-        self.stderr.lines().collect()
-    }
-
-    /// stdout decoded lossily with trailing whitespace trimmed.
-    #[must_use]
-    pub fn stdout_trimmed(&self) -> String {
-        self.stdout_str().trim_end().to_owned()
-    }
 }
 
 /// Locate the `git` binary, returning [`Error::GitNotFound`] if missing.
 ///
 /// Commands don't call this on every execution — tokio's `Command::new("git")`
-/// already reports a helpful IO error we translate. This helper is for callers
+/// reports spawn errors as [`Error::Io`], since a missing working directory
+/// can produce the same OS error as a missing executable. This helper is for callers
 /// that want to verify availability up front.
 pub fn find_git() -> Result<PathBuf> {
     which::which("git").map_err(|_| Error::GitNotFound)
@@ -1138,15 +921,16 @@ mod tests {
     fn executor_stdin_builder_distinguishes_empty_from_absent() {
         let absent = CommandExecutor::new();
         let empty = CommandExecutor::new().stdin_bytes(Vec::new());
-        assert!(absent.stdin.is_none());
-        assert_eq!(empty.stdin, Some(Vec::new()));
+        assert!(matches!(absent.stdin, StdinMode::Null));
+        assert!(matches!(empty.stdin, StdinMode::Bytes(ref bytes) if bytes.is_empty()));
     }
 
     #[test]
     fn command_output_helpers() {
         let o = CommandOutput {
             stdout: b"a\nb\n".to_vec(),
-            stderr: String::new(),
+            stderr: Vec::new(),
+            status: ProcessStatus::Exited { code: 0 },
             exit_code: 0,
             success: true,
         };
@@ -1214,10 +998,11 @@ mod tests {
         assert!(!output.success);
     }
 
-    /// A timeout must reap the grandchildren git spawned, not just the direct
+    /// A timeout must terminate the grandchildren git spawned, not just the direct
     /// child. Regression test for the process-group kill: a slow `pre-commit`
     /// hook backgrounds a `sleep`, records its pid, and we assert that pid is
-    /// gone after the commit times out.
+    /// is no longer executing after the commit times out. Only a process's
+    /// parent (or an adopting reaper) can reap it on Unix.
     #[cfg(unix)]
     #[tokio::test]
     async fn timeout_kills_process_group() {
@@ -1281,7 +1066,7 @@ mod tests {
             .await
             .unwrap_err();
         assert!(
-            matches!(err, Error::Timeout { .. }),
+            matches!(err, Error::Execution { ref failure } if matches!(failure.kind, crate::execution::ExecutionFailureKind::TimedOut { .. })),
             "expected timeout, got {err:?}"
         );
 
@@ -1292,9 +1077,20 @@ mod tests {
             .parse()
             .expect("pidfile should contain a pid");
 
-        // The group kill should reap the backgrounded sleep. Poll until the
-        // pid is gone (kill(pid, 0) returns ESRCH); fail if it survives.
-        let is_alive = |pid: i32| unsafe { libc::kill(pid, 0) == 0 };
+        // A container's PID 1 may leave terminated orphans as zombies. PID
+        // existence alone must not be mistaken for continuing execution.
+        let is_alive = |pid: i32| {
+            #[cfg(target_os = "linux")]
+            if let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) {
+                if let Some((_, rest)) = stat.rsplit_once(") ") {
+                    if rest.starts_with('Z') || rest.starts_with('X') {
+                        return false;
+                    }
+                }
+            }
+            // SAFETY: a zero signal queries this fixture PID's existence.
+            unsafe { libc::kill(pid, 0) == 0 }
+        };
         let deadline = Instant::now() + Duration::from_secs(5);
         while is_alive(grandchild) {
             assert!(
@@ -1368,7 +1164,7 @@ mod tests {
             .await
             .unwrap_err();
         assert!(
-            matches!(err, Error::Timeout { .. }),
+            matches!(err, Error::Execution { ref failure } if matches!(failure.kind, crate::execution::ExecutionFailureKind::TimedOut { .. })),
             "expected timeout, got {err:?}"
         );
 
@@ -1434,7 +1230,7 @@ mod tests {
             .await
             .unwrap_err();
         assert!(
-            matches!(err, Error::Timeout { .. }),
+            matches!(err, Error::Execution { ref failure } if matches!(failure.kind, crate::execution::ExecutionFailureKind::TimedOut { .. })),
             "expected timeout, got {err:?}"
         );
 
@@ -1465,6 +1261,171 @@ mod tests {
             );
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
+    }
+
+    /// Keep an in-flight test invocation from surviving an assertion failure.
+    #[cfg(windows)]
+    struct WindowsAbortOnDrop(tokio::task::AbortHandle);
+
+    #[cfg(windows)]
+    impl Drop for WindowsAbortOnDrop {
+        fn drop(&mut self) {
+            self.0.abort();
+        }
+    }
+
+    /// Hold a handle to the exact helper process so a reused PID cannot make
+    /// the lifetime check pass or accidentally terminate a different process.
+    #[cfg(windows)]
+    struct WindowsObservedDescendant(windows_sys::Win32::Foundation::HANDLE);
+
+    #[cfg(windows)]
+    impl WindowsObservedDescendant {
+        fn open(pid: u32) -> Self {
+            use windows_sys::Win32::System::Threading::{
+                OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
+            };
+
+            // SAFETY: this returns an owned process handle or null on failure.
+            let handle = unsafe {
+                OpenProcess(
+                    PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE,
+                    0,
+                    pid,
+                )
+            };
+            assert!(!handle.is_null(), "could not observe helper pid {pid}");
+            Self(handle)
+        }
+
+        fn is_active(&self) -> bool {
+            use windows_sys::Win32::Foundation::STILL_ACTIVE;
+            use windows_sys::Win32::System::Threading::GetExitCodeProcess;
+
+            let mut code = 0;
+            // SAFETY: self owns a valid process handle and code is writable.
+            assert_ne!(unsafe { GetExitCodeProcess(self.0, &mut code) }, 0);
+            code == STILL_ACTIVE as u32
+        }
+
+        async fn wait_until_stopped(&self) {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while self.is_active() {
+                assert!(
+                    Instant::now() < deadline,
+                    "Windows descendant survived execution interruption"
+                );
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    impl Drop for WindowsObservedDescendant {
+        fn drop(&mut self) {
+            use windows_sys::Win32::Foundation::{CloseHandle, STILL_ACTIVE};
+            use windows_sys::Win32::System::Threading::{GetExitCodeProcess, TerminateProcess};
+
+            let mut code = 0;
+            // SAFETY: the handle is owned by this guard. On an assertion
+            // failure, terminate a still-active helper before closing it.
+            unsafe {
+                if GetExitCodeProcess(self.0, &mut code) != 0 && code == STILL_ACTIVE as u32 {
+                    TerminateProcess(self.0, 1);
+                }
+                CloseHandle(self.0);
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    async fn wait_for_windows_descendant_pid(pidfile: &std::path::Path) -> u32 {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if let Ok(contents) = std::fs::read_to_string(pidfile) {
+                if let Ok(pid) = contents.trim().parse() {
+                    return pid;
+                }
+            }
+            assert!(
+                Instant::now() < deadline,
+                "Windows helper did not publish {}",
+                pidfile.display()
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }
+
+    #[cfg(windows)]
+    async fn interrupt_untimed_windows_descendant(cancel: bool) {
+        let dir = tempfile::tempdir().unwrap();
+        let pidfile = dir.path().join("untimed-grandchild.pid");
+        let pidfile_arg = pidfile.to_string_lossy().replace('\\', "/");
+        let helper = std::env::current_exe()
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+        let alias = format!(
+            "alias.spawn=!\"{helper}\" command::tests::windows_detached_descendant_helper --ignored --exact"
+        );
+        let token = CancellationToken::new();
+        let mut executor = CommandExecutor::new()
+            .cwd(dir.path())
+            .with_env("GIT_SPAWN_WINDOWS_DESCENDANT_PIDFILE", pidfile_arg);
+        assert!(
+            executor.timeout.is_none(),
+            "test requires an untimed command"
+        );
+        if cancel {
+            executor = executor.cancellation_token(token.clone());
+        }
+        executor.add_global_args([OsString::from("-c"), OsString::from(alias)]);
+
+        let mut task =
+            tokio::spawn(async move { executor.execute_command(vec!["spawn".into()]).await });
+        let _abort_on_panic = WindowsAbortOnDrop(task.abort_handle());
+        let pid = wait_for_windows_descendant_pid(&pidfile).await;
+        let descendant = WindowsObservedDescendant::open(pid);
+        assert!(descendant.is_active(), "helper exited before interruption");
+        assert!(
+            !task.is_finished(),
+            "git completed while helper was still active"
+        );
+
+        if cancel {
+            token.cancel();
+            let error = tokio::time::timeout(Duration::from_secs(5), &mut task)
+                .await
+                .expect("cancellation did not settle")
+                .expect("execution task panicked")
+                .unwrap_err();
+            assert!(
+                matches!(error, Error::Execution { ref failure }
+                    if matches!(failure.kind, crate::execution::ExecutionFailureKind::Cancelled)
+                    && failure.cleanup.direct_child_reaped),
+                "expected handled cancellation, got {error:?}"
+            );
+        } else {
+            task.abort();
+            let join = tokio::time::timeout(Duration::from_secs(5), &mut task)
+                .await
+                .expect("aborted execution future did not settle");
+            assert!(join.unwrap_err().is_cancelled());
+        }
+
+        descendant.wait_until_stopped().await;
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn untimed_cancellation_kills_windows_job_descendant() {
+        interrupt_untimed_windows_descendant(true).await;
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn dropping_untimed_future_kills_windows_job_descendant() {
+        interrupt_untimed_windows_descendant(false).await;
     }
 
     /// Long-lived process invoked by the success-path containment regression.

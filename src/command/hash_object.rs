@@ -43,7 +43,7 @@ impl HashObjectCommand {
     /// Hash exact bytes supplied through stdin.
     pub fn stdin(&mut self, bytes: impl Into<Vec<u8>>) -> &mut Self {
         self.stdin = true;
-        self.executor.stdin = Some(bytes.into());
+        self.executor.stdin = crate::command::StdinMode::Bytes(bytes.into());
         self
     }
 

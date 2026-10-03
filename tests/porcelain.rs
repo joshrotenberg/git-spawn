@@ -547,7 +547,7 @@ async fn pull_classifies_fast_forward_and_already_up_to_date() {
         .execute()
         .await
         .unwrap();
-    let combined = format!("{}{}", out.stdout_str(), out.stderr);
+    let combined = format!("{}{}", out.stdout_str(), out.stderr_str());
     let result = git_spawn::parse::parse_pull(&combined);
     assert!(result.already_up_to_date, "expected up to date: {combined}");
     assert!(!result.fast_forward);
@@ -572,7 +572,7 @@ async fn pull_classifies_fast_forward_and_already_up_to_date() {
         .execute()
         .await
         .unwrap();
-    let combined = format!("{}{}", out.stdout_str(), out.stderr);
+    let combined = format!("{}{}", out.stdout_str(), out.stderr_str());
     let result = git_spawn::parse::parse_pull(&combined);
     assert!(result.fast_forward, "expected fast-forward: {combined}");
     assert!(!result.already_up_to_date);
@@ -620,7 +620,11 @@ async fn rebase_conflict_parses() {
     let err = rebase.execute().await.unwrap_err();
 
     let combined = match err {
-        git_spawn::Error::CommandFailed { stdout, stderr, .. } => format!("{stdout}{stderr}"),
+        git_spawn::Error::CommandFailed { stdout, stderr, .. } => format!(
+            "{}{}",
+            String::from_utf8_lossy(&stdout),
+            String::from_utf8_lossy(&stderr)
+        ),
         other => panic!("expected CommandFailed, got {other:?}"),
     };
     let result = git_spawn::parse::parse_rebase(&combined);
@@ -719,7 +723,7 @@ async fn timeout_triggers_error() {
         .with_timeout(Duration::from_millis(50));
     let err = cmd.execute().await.unwrap_err();
     assert!(
-        matches!(err, git_spawn::Error::Timeout { .. })
+        matches!(&err, git_spawn::Error::Execution { failure } if matches!(failure.kind, git_spawn::ExecutionFailureKind::TimedOut { .. }))
             || matches!(err, git_spawn::Error::CommandFailed { .. }),
         "unexpected error: {err:?}"
     );
