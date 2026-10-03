@@ -1,6 +1,7 @@
 //! Integration tests for advanced (Phase 4) commands.
 
 use git_spawn::command::config::ConfigScope;
+use git_spawn::command::status::{IgnoreSubmodules, StatusFormat};
 use git_spawn::{
     BisectCommand, CommandExecutor, ConfigCommand, GitCommand, ReflogCommand, Repository,
     SubmoduleCommand, WorktreeCommand,
@@ -456,4 +457,81 @@ async fn bisect_converges_on_first_bad_commit() {
         .execute()
         .await
         .unwrap();
+}
+
+/// Seed a superproject with one committed submodule at `vendor/sub`. Returns
+/// both tempdir guards so the submodule's origin outlives the test.
+async fn repo_with_submodule() -> (tempfile::TempDir, tempfile::TempDir, Repository) {
+    let (tmp_sub, sub_repo) = seed_repo().await;
+    let (tmp_main, main_repo) = seed_repo().await;
+    // Opt back in to the "file" transport for this test-local clone; see
+    // submodule_add_and_status_parses.
+    let mut add_cmd = SubmoduleCommand::add(sub_repo.path().display().to_string());
+    add_cmd.path("vendor/sub");
+    main_repo
+        .submodule(add_cmd)
+        .env("GIT_ALLOW_PROTOCOL", "file")
+        .execute()
+        .await
+        .unwrap();
+    main_repo
+        .commit()
+        .message("add submodule")
+        .execute()
+        .await
+        .unwrap();
+    (tmp_sub, tmp_main, main_repo)
+}
+
+async fn porcelain_status(repo: &Repository, mode: Option<IgnoreSubmodules>) -> String {
+    let mut cmd = repo.status();
+    cmd.format(StatusFormat::PorcelainV1);
+    if let Some(mode) = mode {
+        cmd.ignore_submodules(mode);
+    }
+    let out = cmd.execute().await.unwrap();
+    out.stdout_str().into_owned()
+}
+
+#[tokio::test]
+async fn status_ignore_submodules_untracked_hides_untracked_content() {
+    let (_tmp_sub, _tmp_main, repo) = repo_with_submodule().await;
+    std::fs::write(repo.path().join("vendor/sub/scratch.txt"), "x\n").unwrap();
+
+    let none = porcelain_status(&repo, Some(IgnoreSubmodules::None)).await;
+    assert!(none.contains("vendor/sub"), "none: {none:?}");
+
+    let untracked = porcelain_status(&repo, Some(IgnoreSubmodules::Untracked)).await;
+    assert!(untracked.trim().is_empty(), "untracked: {untracked:?}");
+}
+
+#[tokio::test]
+async fn status_ignore_submodules_moved_pointer() {
+    let (_tmp_sub, _tmp_main, repo) = repo_with_submodule().await;
+    let sub = Repository::open(repo.path().join("vendor/sub")).unwrap();
+    configure_identity(&sub).await;
+    std::fs::write(sub.path().join("a.txt"), "moved\n").unwrap();
+    sub.add().path("a.txt").execute().await.unwrap();
+    sub.commit().message("move").execute().await.unwrap();
+
+    // A moved pointer is still reported under `dirty`; only `all` hides it.
+    let dirty = porcelain_status(&repo, Some(IgnoreSubmodules::Dirty)).await;
+    assert!(dirty.contains("vendor/sub"), "dirty: {dirty:?}");
+    let all = porcelain_status(&repo, Some(IgnoreSubmodules::All)).await;
+    assert!(all.trim().is_empty(), "all: {all:?}");
+}
+
+#[tokio::test]
+async fn status_ignore_submodules_none_overrides_config() {
+    let (_tmp_sub, _tmp_main, repo) = repo_with_submodule().await;
+    let mut cfg = ConfigCommand::set("diff.ignoreSubmodules", "all");
+    cfg.scope(ConfigScope::Local);
+    cfg.current_dir(repo.path());
+    cfg.execute().await.unwrap();
+    std::fs::write(repo.path().join("vendor/sub/scratch.txt"), "x\n").unwrap();
+
+    let default = porcelain_status(&repo, None).await;
+    assert!(default.trim().is_empty(), "default: {default:?}");
+    let none = porcelain_status(&repo, Some(IgnoreSubmodules::None)).await;
+    assert!(none.contains("vendor/sub"), "none: {none:?}");
 }

@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Effective remote fetch/push URL queries with Git's rewriting rules, exact
+  and absent-ref push leases, common-directory queries, typed status submodule
+  policies, and a `DiffCommand::has_changes` predicate.
 - Cancellation tokens with awaited cleanup, configurable per-stream capture
   limits, and a separate cleanup timeout.
 - Regression scenarios for cancellation, future drop, timeout, blocked input,
@@ -27,6 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Disable automatic background maintenance in integration fixtures so explicit
+  maintenance assertions do not race detached Git maintenance processes.
+- Accept bare repositories in `Repository::open` and return their repository
+  path from `git_dir()`, with real bare init/clone regression tests.
 - Request process-group/Job Object cleanup on cancellation and I/O failure as
   well as timeout; preserve uncertainty instead of implying write rollback.
 - Distinguish spawn I/O failures from the explicit Git discovery helper.

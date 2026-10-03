@@ -18,6 +18,41 @@ pub enum StatusFormat {
     PorcelainV2,
 }
 
+/// Submodule handling for `--ignore-submodules=<when>`.
+///
+/// Passing a mode on the command line overrides the repository's
+/// `diff.ignoreSubmodules` and `submodule.<name>.ignore` settings, so
+/// [`IgnoreSubmodules::None`] is the way to make a cleanliness check count
+/// submodule changes regardless of configuration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum IgnoreSubmodules {
+    /// `none`: report a submodule as modified when it has untracked files,
+    /// modified files, or a checked-out commit that differs from the one
+    /// recorded in the superproject.
+    None,
+    /// `untracked`: do not count untracked files inside submodules.
+    Untracked,
+    /// `dirty`: ignore changes to submodule work trees; only a moved
+    /// submodule pointer is reported.
+    Dirty,
+    /// `all`: hide all changes to submodules.
+    All,
+}
+
+impl IgnoreSubmodules {
+    /// The value git expects after `--ignore-submodules=`.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Untracked => "untracked",
+            Self::Dirty => "dirty",
+            Self::All => "all",
+        }
+    }
+}
+
 /// Builder for `git status`.
 #[derive(Debug, Clone, Default)]
 #[non_exhaustive]
@@ -36,6 +71,8 @@ pub struct StatusCommand {
     pub untracked_files: Option<String>,
     /// `--ignored`.
     pub ignored: bool,
+    /// `--ignore-submodules=<when>`.
+    pub ignore_submodules: Option<IgnoreSubmodules>,
     /// Pathspec filters.
     pub paths: Vec<String>,
 }
@@ -83,6 +120,13 @@ impl StatusCommand {
         self
     }
 
+    /// Set submodule handling (`--ignore-submodules=<when>`), overriding
+    /// the repository configuration. Last call wins.
+    pub fn ignore_submodules(&mut self, mode: IgnoreSubmodules) -> &mut Self {
+        self.ignore_submodules = Some(mode);
+        self
+    }
+
     /// Filter by path.
     pub fn path(&mut self, p: impl Into<String>) -> &mut Self {
         self.paths.push(p.into());
@@ -125,6 +169,9 @@ impl GitCommand for StatusCommand {
         }
         if self.ignored {
             args.push("--ignored".into());
+        }
+        if let Some(m) = self.ignore_submodules {
+            args.push(format!("--ignore-submodules={}", m.as_str()));
         }
         if !self.paths.is_empty() {
             args.push("--".into());

@@ -5,9 +5,10 @@ use git_spawn::command::{
     archive::ArchiveFormat,
     interpret_trailers::{TrailerIfExists, TrailerIfMissing, TrailerWhere},
     maintenance::{MaintenanceSchedule, MaintenanceTask},
+    push::PushRecurseSubmodules,
     reset::ResetMode,
     stash::StashCommand,
-    status::StatusFormat,
+    status::{IgnoreSubmodules, StatusFormat},
 };
 use git_spawn::*;
 
@@ -344,6 +345,43 @@ fn remote_add() {
 fn remote_list_verbose() {
     let c = RemoteCommand::list_verbose();
     assert_eq!(args_of(&c), vec!["remote", "-v"]);
+}
+
+#[test]
+fn remote_get_url() {
+    let c = RemoteCommand::get_url("origin");
+    assert_eq!(args_of(&c), vec!["remote", "get-url", "origin"]);
+}
+
+#[test]
+fn remote_get_url_push() {
+    let mut c = RemoteCommand::get_url("origin");
+    c.push_url();
+    assert_eq!(args_of(&c), vec!["remote", "get-url", "--push", "origin"]);
+}
+
+#[test]
+fn remote_get_url_all() {
+    let mut c = RemoteCommand::get_url("origin");
+    c.all();
+    assert_eq!(args_of(&c), vec!["remote", "get-url", "--all", "origin"]);
+}
+
+#[test]
+fn remote_get_url_push_and_all() {
+    let mut c = RemoteCommand::get_url("upstream");
+    c.push_url().all();
+    assert_eq!(
+        args_of(&c),
+        vec!["remote", "get-url", "--push", "--all", "upstream"]
+    );
+}
+
+#[test]
+fn remote_toggles_ignored_off_get_url() {
+    let mut c = RemoteCommand::show("origin");
+    c.push_url().all();
+    assert_eq!(args_of(&c), vec!["remote", "show", "origin"]);
 }
 
 #[test]
@@ -1606,4 +1644,191 @@ fn check_ref_format_full_ref_options() {
 fn check_ref_format_branch_mode() {
     let c = CheckRefFormatCommand::branch("topic");
     assert_eq!(args_of(&c), vec!["check-ref-format", "--branch", "topic"]);
+}
+
+#[test]
+fn push_force_with_lease_bare() {
+    let mut c = PushCommand::new();
+    c.force_with_lease().remote("origin").refspec("main");
+    assert_eq!(
+        args_of(&c),
+        vec!["push", "--force-with-lease", "origin", "main"]
+    );
+}
+
+#[test]
+fn push_force_with_lease_for_ref_only() {
+    let mut c = PushCommand::new();
+    c.force_with_lease_for("main", None)
+        .remote("origin")
+        .refspec("main");
+    assert_eq!(
+        args_of(&c),
+        vec!["push", "--force-with-lease=main", "origin", "main"]
+    );
+}
+
+#[test]
+fn push_force_with_lease_for_ref_and_expected_object() {
+    let mut c = PushCommand::new();
+    c.force_with_lease_for("main", Some("deadbeef".to_string()))
+        .remote("origin")
+        .refspec("main");
+    assert_eq!(
+        args_of(&c),
+        vec!["push", "--force-with-lease=main:deadbeef", "origin", "main"]
+    );
+}
+
+#[test]
+fn push_force_with_lease_for_empty_expected_object() {
+    let mut c = PushCommand::new();
+    c.force_with_lease_for("topic", Some(String::new()));
+    assert_eq!(args_of(&c), vec!["push", "--force-with-lease=topic:"]);
+}
+
+#[test]
+fn push_force_with_lease_keeps_the_last_call() {
+    let mut c = PushCommand::new();
+    c.force_with_lease_for("main", Some("deadbeef".to_string()))
+        .force_with_lease();
+    assert_eq!(args_of(&c), vec!["push", "--force-with-lease"]);
+}
+
+#[test]
+fn push_no_follow_tags_no_verify_and_recurse_submodules() {
+    let mut c = PushCommand::new();
+    c.no_follow_tags()
+        .no_verify()
+        .recurse_submodules(PushRecurseSubmodules::OnDemand)
+        .remote("origin")
+        .refspec("main");
+    assert_eq!(
+        args_of(&c),
+        vec![
+            "push",
+            "--no-follow-tags",
+            "--no-verify",
+            "--recurse-submodules=on-demand",
+            "origin",
+            "main"
+        ]
+    );
+}
+
+#[test]
+fn push_follow_tags_keeps_the_last_call() {
+    let mut c = PushCommand::new();
+    c.no_follow_tags().follow_tags();
+    assert_eq!(args_of(&c), vec!["push", "--follow-tags"]);
+}
+
+#[test]
+fn push_recurse_submodules_modes() {
+    for (mode, spelling) in [
+        (PushRecurseSubmodules::Check, "check"),
+        (PushRecurseSubmodules::OnDemand, "on-demand"),
+        (PushRecurseSubmodules::Only, "only"),
+        (PushRecurseSubmodules::No, "no"),
+    ] {
+        let mut c = PushCommand::new();
+        c.recurse_submodules(mode);
+        assert_eq!(
+            args_of(&c),
+            vec!["push", &format!("--recurse-submodules={spelling}")]
+        );
+    }
+}
+
+#[test]
+fn rev_parse_git_common_dir() {
+    let mut c = RevParseCommand::new();
+    c.git_common_dir();
+    assert_eq!(args_of(&c), vec!["rev-parse", "--git-common-dir"]);
+}
+
+#[test]
+fn rev_parse_absolute_git_common_dir() {
+    let mut c = RevParseCommand::new();
+    c.absolute_git_common_dir();
+    assert_eq!(
+        args_of(&c),
+        vec!["rev-parse", "--path-format=absolute", "--git-common-dir"]
+    );
+}
+
+#[test]
+fn rev_parse_git_common_dir_last_call_wins() {
+    let mut c = RevParseCommand::new();
+    c.absolute_git_common_dir().git_common_dir();
+    assert_eq!(args_of(&c), vec!["rev-parse", "--git-common-dir"]);
+}
+
+/// `--path-format` is positional and rewrites every path option that follows
+/// it, so it must be emitted after `--git-dir` and `--show-toplevel` or it
+/// would silently make those absolute too.
+#[test]
+fn rev_parse_path_format_does_not_precede_other_path_queries() {
+    let mut c = RevParseCommand::new();
+    c.show_toplevel().git_dir().absolute_git_common_dir();
+    assert_eq!(
+        args_of(&c),
+        vec![
+            "rev-parse",
+            "--show-toplevel",
+            "--git-dir",
+            "--path-format=absolute",
+            "--git-common-dir"
+        ]
+    );
+}
+
+#[test]
+fn status_ignore_submodules_modes() {
+    for (mode, expected) in [
+        (IgnoreSubmodules::None, "--ignore-submodules=none"),
+        (IgnoreSubmodules::Untracked, "--ignore-submodules=untracked"),
+        (IgnoreSubmodules::Dirty, "--ignore-submodules=dirty"),
+        (IgnoreSubmodules::All, "--ignore-submodules=all"),
+    ] {
+        let mut c = StatusCommand::new();
+        c.ignore_submodules(mode);
+        assert_eq!(args_of(&c), vec!["status", expected]);
+    }
+}
+
+#[test]
+fn status_ignore_submodules_precedes_pathspec() {
+    let mut c = StatusCommand::new();
+    c.format(StatusFormat::PorcelainV1)
+        .ignore_submodules(IgnoreSubmodules::None)
+        .path("vendor");
+    assert_eq!(
+        args_of(&c),
+        vec![
+            "status",
+            "--porcelain=v1",
+            "--ignore-submodules=none",
+            "--",
+            "vendor"
+        ]
+    );
+}
+
+#[test]
+fn status_ignore_submodules_last_call_wins() {
+    let mut c = StatusCommand::new();
+    c.ignore_submodules(IgnoreSubmodules::All)
+        .ignore_submodules(IgnoreSubmodules::Dirty);
+    assert_eq!(args_of(&c), vec!["status", "--ignore-submodules=dirty"]);
+}
+
+#[test]
+fn diff_quiet_precedes_revisions_and_pathspecs() {
+    let mut command = git_spawn::DiffCommand::new();
+    command.quiet().cached().revision("HEAD").path("tracked");
+    assert_eq!(
+        args_of(&command),
+        vec!["diff", "--cached", "--quiet", "HEAD", "--", "tracked"]
+    );
 }

@@ -12,6 +12,7 @@ use git_spawn::{
     VerifyTagCommand, VersionCommand,
 };
 
+use git_spawn::WorktreeCommand;
 use git_spawn::command::archive::ArchiveFormat;
 use git_spawn::command::config::{ConfigCommand, ConfigScope};
 use git_spawn::command::interpret_trailers::TrailerIfExists;
@@ -2364,7 +2365,22 @@ async fn fsck_reports_a_dangling_object_by_default() {
 
 #[tokio::test]
 async fn maintenance_run_writes_the_commit_graph() {
-    let (_tmp, repo) = make_repo_with_commit().await;
+    // Disable auto maintenance before the first commit: otherwise `commit` can
+    // detach a background `maintenance run --auto` that holds
+    // `objects/maintenance.lock`, and the explicit run below then exits 0
+    // without doing any work.
+    let (_tmp, repo) = common::init_repo().await;
+    for (key, value) in [("gc.auto", "0"), ("maintenance.auto", "false")] {
+        let mut cfg = ConfigCommand::set(key, value);
+        cfg.scope(ConfigScope::Local);
+        cfg.current_dir(repo.path());
+        cfg.execute()
+            .await
+            .unwrap_or_else(|e| panic!("git config {key} failed: {e}"));
+    }
+    std::fs::write(repo.path().join("hello.txt"), "hi\n").unwrap();
+    repo.add().path("hello.txt").execute().await.unwrap();
+    repo.commit().message("init").execute().await.unwrap();
     // The commit-graph task writes a split chain under commit-graphs/, not the
     // single commit-graph file that a full `git gc` produces. Verified against
     // git 2.50.1 before the assertion was written.
@@ -3118,4 +3134,76 @@ async fn check_ref_format_rejects_invalid_builder_shapes() {
         branch.execute().await,
         Err(Error::InvalidConfig { .. })
     ));
+}
+
+#[tokio::test]
+async fn rev_parse_git_common_dir_matches_git_dir_in_main_worktree() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+
+    let mut common = RevParseCommand::new();
+    common.current_dir(repo.path()).git_common_dir();
+    let common = common.execute().await.unwrap();
+
+    let mut git_dir = RevParseCommand::new();
+    git_dir.current_dir(repo.path()).git_dir();
+    let git_dir = git_dir.execute().await.unwrap();
+
+    // From the main working tree the shared directory and the per-worktree
+    // directory are the same place, and git spells both relatively.
+    assert_eq!(common, git_dir);
+    assert_eq!(common, ".git");
+}
+
+#[tokio::test]
+async fn rev_parse_absolute_git_common_dir_is_absolute() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+
+    let mut cmd = RevParseCommand::new();
+    cmd.current_dir(repo.path()).absolute_git_common_dir();
+    let got = cmd.execute().await.unwrap();
+
+    assert!(
+        std::path::Path::new(&got).is_absolute(),
+        "expected an absolute path, got {got}"
+    );
+    // Canonicalize both sides: macOS reports /private/var for /var.
+    let want = std::fs::canonicalize(repo.path().join(".git")).unwrap();
+    assert_eq!(std::fs::canonicalize(&got).unwrap(), want);
+}
+
+#[tokio::test]
+async fn rev_parse_git_common_dir_from_linked_worktree_names_the_shared_dir() {
+    let (_tmp, repo) = make_repo_with_commit().await;
+    let wt = repo.path().parent().unwrap().join("linked-wt");
+    repo.worktree(WorktreeCommand::add(&wt))
+        .new_branch("wt-branch")
+        .execute()
+        .await
+        .unwrap();
+
+    // The private per-worktree directory: .git/worktrees/linked-wt.
+    let mut git_dir = RevParseCommand::new();
+    git_dir.current_dir(&wt).git_dir();
+    let git_dir = git_dir.execute().await.unwrap();
+
+    // The shared repository directory: the main repo's .git.
+    let mut common = RevParseCommand::new();
+    common.current_dir(&wt).absolute_git_common_dir();
+    let common = common.execute().await.unwrap();
+
+    assert_ne!(
+        std::fs::canonicalize(&git_dir).unwrap(),
+        std::fs::canonicalize(&common).unwrap(),
+        "a linked worktree must distinguish its own git dir from the shared one"
+    );
+    assert_eq!(
+        std::fs::canonicalize(&common).unwrap(),
+        std::fs::canonicalize(repo.path().join(".git")).unwrap()
+    );
+    assert!(
+        std::fs::canonicalize(&git_dir)
+            .unwrap()
+            .starts_with(std::fs::canonicalize(repo.path().join(".git")).unwrap()),
+        "expected {git_dir} under the shared dir"
+    );
 }

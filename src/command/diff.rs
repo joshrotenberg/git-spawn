@@ -24,6 +24,8 @@ pub struct DiffCommand {
     pub numstat: bool,
     /// `--no-color`.
     pub no_color: bool,
+    /// `--quiet`: suppress the diff and use exit status to report changes.
+    pub quiet: bool,
     /// NUL-terminate entries (`-z`).
     pub null_terminate: bool,
     /// `--unified=N`.
@@ -81,6 +83,32 @@ impl DiffCommand {
     pub fn no_color(&mut self) -> &mut Self {
         self.no_color = true;
         self
+    }
+
+    /// Suppress output and enable Git's difference exit status.
+    ///
+    /// [`GitCommand::execute`] treats exit status 1 as a command failure.
+    /// Use [`has_changes`](Self::has_changes) to interpret it as a difference.
+    pub fn quiet(&mut self) -> &mut Self {
+        self.quiet = true;
+        self
+    }
+
+    /// Return whether the selected working tree, index, revisions or paths
+    /// differ. Executes with `--quiet`: exit 0 means unchanged, exit 1 means
+    /// changed, and all other statuses or execution failures remain errors.
+    ///
+    /// Untracked files are outside `git diff` and are not counted. Like Git,
+    /// this disables external diff helpers unless they opt into trusted exit
+    /// codes. Other builder settings and executor policies are preserved.
+    pub async fn has_changes(&self) -> Result<bool> {
+        let mut command = self.clone();
+        command.quiet = true;
+        let output = command
+            .executor
+            .execute_command_os_allowing(command.build_command_os_args(), &[0, 1])
+            .await?;
+        Ok(output.exit_code == 1)
     }
 
     /// NUL-separate entries (`-z`). Required to safely parse
@@ -145,6 +173,9 @@ impl GitCommand for DiffCommand {
         }
         if self.no_color {
             args.push("--no-color".into());
+        }
+        if self.quiet {
+            args.push("--quiet".into());
         }
         if self.null_terminate {
             args.push("-z".into());

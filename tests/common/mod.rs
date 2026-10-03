@@ -11,6 +11,9 @@ use git_spawn::{GitCommand, Repository};
 /// Configure a local identity and deterministic settings so commits work in
 /// clean CI environments. `core.autocrlf=false` keeps Windows from rewriting
 /// `\n` to `\r\n` on checkout, which would break byte-for-byte assertions.
+/// Automatic maintenance is disabled so fixture commits cannot start a
+/// detached process that holds maintenance locks while the test runs its own
+/// commands. Explicit maintenance commands remain enabled.
 ///
 /// Runs through the crate's tokio-based executor rather than a blocking
 /// `std::process::Command`: these helpers are called from `#[tokio::test]`
@@ -24,6 +27,7 @@ pub async fn configure_identity(repo: &Repository) {
         ("user.name", "Test"),
         ("commit.gpgsign", "false"),
         ("core.autocrlf", "false"),
+        ("maintenance.auto", "false"),
     ] {
         let mut cmd = ConfigCommand::set(k, v);
         cmd.scope(ConfigScope::Local);
