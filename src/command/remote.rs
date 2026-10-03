@@ -36,6 +36,18 @@ pub enum RemoteAction {
         /// New URL.
         url: String,
     },
+    /// Query URLs: `git remote get-url [--push] [--all] <name>`.
+    ///
+    /// Unlike reading `remote.<name>.url` from the configuration, `get-url`
+    /// applies `insteadOf` and `pushInsteadOf` rewrites.
+    GetUrl {
+        /// Remote name.
+        name: String,
+        /// `--push`
+        push: bool,
+        /// `--all`
+        all: bool,
+    },
     /// Show remote: `git remote show <name>`.
     Show(String),
     /// Prune stale refs: `git remote prune <name>`.
@@ -121,6 +133,38 @@ impl RemoteCommand {
         }
     }
 
+    /// Query a remote's URL (`git remote get-url <name>`).
+    ///
+    /// Prints the fetch URL with `insteadOf` rewrites applied. Use
+    /// [`push_url`](Self::push_url) for the push URL and [`all`](Self::all)
+    /// for every configured URL, one per line.
+    pub fn get_url(name: impl Into<String>) -> Self {
+        Self {
+            action: RemoteAction::GetUrl {
+                name: name.into(),
+                push: false,
+                all: false,
+            },
+            ..Self::default()
+        }
+    }
+
+    /// `--push` (requires [`get_url`](Self::get_url)).
+    pub fn push_url(&mut self) -> &mut Self {
+        if let RemoteAction::GetUrl { push, .. } = &mut self.action {
+            *push = true;
+        }
+        self
+    }
+
+    /// `--all` (requires [`get_url`](Self::get_url)).
+    pub fn all(&mut self) -> &mut Self {
+        if let RemoteAction::GetUrl { all, .. } = &mut self.action {
+            *all = true;
+        }
+        self
+    }
+
     /// Show a remote.
     pub fn show(name: impl Into<String>) -> Self {
         Self {
@@ -173,6 +217,16 @@ impl GitCommand for RemoteCommand {
                 args.push("set-url".into());
                 args.push(name.clone());
                 args.push(url.clone());
+            }
+            RemoteAction::GetUrl { name, push, all } => {
+                args.push("get-url".into());
+                if *push {
+                    args.push("--push".into());
+                }
+                if *all {
+                    args.push("--all".into());
+                }
+                args.push(name.clone());
             }
             RemoteAction::Show(name) => {
                 args.push("show".into());

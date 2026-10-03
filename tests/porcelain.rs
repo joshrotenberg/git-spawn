@@ -429,6 +429,83 @@ async fn remote_add_and_list() {
 }
 
 #[tokio::test]
+async fn remote_get_url_reports_urls() {
+    let (_tmp, repo) = make_repo().await;
+    repo.remote(git_spawn::RemoteCommand::add(
+        "origin",
+        "https://example.com/repo.git",
+    ))
+    .execute()
+    .await
+    .unwrap();
+
+    let out = repo
+        .remote(git_spawn::RemoteCommand::get_url("origin"))
+        .execute()
+        .await
+        .unwrap();
+    assert_eq!(out.stdout_str().trim(), "https://example.com/repo.git");
+
+    // A separate push URL is reported only by `--push`.
+    repo.config(git_spawn::ConfigCommand::set(
+        "remote.origin.pushurl",
+        "git@example.com:repo.git",
+    ))
+    .execute()
+    .await
+    .unwrap();
+
+    let mut push_cmd = repo.remote(git_spawn::RemoteCommand::get_url("origin"));
+    push_cmd.push_url();
+    let out = push_cmd.execute().await.unwrap();
+    assert_eq!(out.stdout_str().trim(), "git@example.com:repo.git");
+
+    let out = repo
+        .remote(git_spawn::RemoteCommand::get_url("origin"))
+        .execute()
+        .await
+        .unwrap();
+    assert_eq!(
+        out.stdout_str().trim(),
+        "https://example.com/repo.git",
+        "the fetch URL is unchanged by a push URL"
+    );
+
+    // A second fetch URL is reported only by `--all`.
+    repo.config(git_spawn::ConfigCommand::add(
+        "remote.origin.url",
+        "https://example.com/mirror.git",
+    ))
+    .execute()
+    .await
+    .unwrap();
+
+    let mut all_cmd = repo.remote(git_spawn::RemoteCommand::get_url("origin"));
+    all_cmd.all();
+    let out = all_cmd.execute().await.unwrap();
+    let stdout = out.stdout_str();
+    let urls: Vec<&str> = stdout.lines().map(str::trim).collect();
+    assert_eq!(
+        urls,
+        vec![
+            "https://example.com/repo.git",
+            "https://example.com/mirror.git"
+        ]
+    );
+}
+
+#[tokio::test]
+async fn remote_get_url_errors_for_unknown_remote() {
+    let (_tmp, repo) = make_repo().await;
+    assert!(
+        repo.remote(git_spawn::RemoteCommand::get_url("nope"))
+            .execute()
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
 async fn push_pull_via_local_remote() {
     let tmp = tempfile::tempdir().unwrap();
 
@@ -492,6 +569,166 @@ async fn push_pull_via_local_remote() {
         .await
         .unwrap();
     assert!(repo_b.path().join("another").exists());
+}
+
+/// Bare remote plus a working copy A that has pushed `main` to it, with a
+/// second commit made locally via `--amend` so the next push needs forcing.
+/// Returns the tempdir guard, the working copy, and the object the remote's
+/// `main` still points at.
+async fn make_repo_diverged_from_its_remote() -> (tempfile::TempDir, Repository, String) {
+    let tmp = tempfile::tempdir().unwrap();
+
+    let bare_path = tmp.path().join("remote.git");
+    std::fs::create_dir_all(&bare_path).unwrap();
+    let mut init = git_spawn::InitCommand::in_directory(&bare_path);
+    init.bare().initial_branch("main").quiet();
+    init.execute().await.unwrap();
+
+    let a_path = tmp.path().join("a");
+    std::fs::create_dir_all(&a_path).unwrap();
+    let mut init_a = git_spawn::InitCommand::in_directory(&a_path);
+    init_a.initial_branch("main").quiet();
+    let repo = init_a.execute().await.unwrap();
+    configure_identity(&repo).await;
+    commit_one(&repo, "hello", "hi\n", "init").await;
+
+    repo.remote(git_spawn::RemoteCommand::add(
+        "origin",
+        bare_path.display().to_string(),
+    ))
+    .execute()
+    .await
+    .unwrap();
+    repo.push()
+        .set_upstream()
+        .remote("origin")
+        .refspec("main")
+        .execute()
+        .await
+        .unwrap();
+
+    let pushed = head_of(&repo).await;
+
+    // Rewrite the pushed commit so the branches diverge.
+    std::fs::write(repo.path().join("hello"), "changed\n").unwrap();
+    repo.add().path("hello").execute().await.unwrap();
+    repo.commit()
+        .message("amended")
+        .amend()
+        .execute()
+        .await
+        .unwrap();
+
+    (tmp, repo, pushed)
+}
+
+async fn head_of(repo: &Repository) -> String {
+    let mut cmd = git_spawn::RevParseCommand::new();
+    cmd.current_dir(repo.path()).arg_str("HEAD");
+    cmd.execute().await.unwrap().trim().to_string()
+}
+
+#[tokio::test]
+async fn push_force_with_lease_rejects_a_stale_expected_object() {
+    let (_tmp, repo, pushed) = make_repo_diverged_from_its_remote().await;
+
+    // Lease against the local head, which is not what the remote holds.
+    let local = head_of(&repo).await;
+    let err = repo
+        .push()
+        .force_with_lease_for("main", Some(local))
+        .remote("origin")
+        .refspec("main")
+        .execute()
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, git_spawn::Error::CommandFailed { .. }),
+        "unexpected error: {err:?}"
+    );
+    let remote = repo
+        .ls_remote()
+        .repository("origin")
+        .heads()
+        .execute()
+        .await
+        .unwrap();
+    assert!(
+        remote
+            .stdout_str()
+            .contains(&format!("{pushed}\trefs/heads/main")),
+        "a rejected lease must preserve the remote ref"
+    );
+}
+
+#[tokio::test]
+async fn push_empty_lease_rejects_an_existing_ref_without_modifying_it() {
+    let (_tmp, repo, pushed) = make_repo_diverged_from_its_remote().await;
+    let err = repo
+        .push()
+        .force_with_lease_for("refs/heads/main", Some(String::new()))
+        .remote("origin")
+        .refspec("HEAD:refs/heads/main")
+        .execute()
+        .await
+        .unwrap_err();
+    assert!(matches!(err, git_spawn::Error::CommandFailed { .. }));
+    let remote = repo
+        .ls_remote()
+        .repository("origin")
+        .heads()
+        .execute()
+        .await
+        .unwrap();
+    assert!(
+        remote
+            .stdout_str()
+            .contains(&format!("{pushed}\trefs/heads/main"))
+    );
+}
+
+#[tokio::test]
+async fn push_force_with_lease_accepts_the_expected_object() {
+    let (_tmp, repo, pushed) = make_repo_diverged_from_its_remote().await;
+
+    repo.push()
+        .force_with_lease_for("main", Some(pushed))
+        .remote("origin")
+        .refspec("main")
+        .execute()
+        .await
+        .unwrap();
+
+    let mut ls = git_spawn::LsRemoteCommand::new();
+    ls.current_dir(repo.path()).repository("origin").heads();
+    let out = ls.execute().await.unwrap();
+    assert!(
+        out.stdout_str().contains(&head_of(&repo).await),
+        "remote main did not move: {}",
+        out.stdout_str()
+    );
+}
+
+#[tokio::test]
+async fn push_force_with_lease_for_an_absent_ref_takes_an_empty_expectation() {
+    let (_tmp, repo, _pushed) = make_repo_diverged_from_its_remote().await;
+
+    repo.push()
+        .force_with_lease_for("topic", Some(String::new()))
+        .remote("origin")
+        .refspec("HEAD:refs/heads/topic")
+        .execute()
+        .await
+        .unwrap();
+
+    let mut ls = git_spawn::LsRemoteCommand::new();
+    ls.current_dir(repo.path()).repository("origin").heads();
+    let out = ls.execute().await.unwrap();
+    assert!(
+        out.stdout_str().contains("refs/heads/topic"),
+        "topic was not created: {}",
+        out.stdout_str()
+    );
 }
 
 #[tokio::test]
@@ -727,4 +964,49 @@ async fn timeout_triggers_error() {
             || matches!(err, git_spawn::Error::CommandFailed { .. }),
         "unexpected error: {err:?}"
     );
+}
+
+#[tokio::test]
+async fn open_accepts_real_bare_init_and_queries_git() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("bare.git");
+    git_spawn::InitCommand::in_directory(&path)
+        .bare()
+        .execute()
+        .await
+        .unwrap();
+    let repo = Repository::open(&path).unwrap();
+    assert_eq!(repo.path(), path);
+    assert_eq!(repo.git_dir(), path);
+    assert_eq!(
+        repo.rev_parse()
+            .is_bare_repository()
+            .execute()
+            .await
+            .unwrap(),
+        "true"
+    );
+}
+
+#[tokio::test]
+async fn open_accepts_real_bare_clone_and_preserves_history() {
+    let (_tmp, source) = make_repo().await;
+    std::fs::write(source.path().join("tracked"), "contents").unwrap();
+    source.add().path("tracked").execute().await.unwrap();
+    source.commit().message("source").execute().await.unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("clone.git");
+    git_spawn::CloneCommand::new(source.path().to_string_lossy())
+        .bare()
+        .directory(&path)
+        .execute()
+        .await
+        .unwrap();
+    let repo = Repository::open(&path).unwrap();
+    assert_eq!(repo.git_dir(), path);
+    assert_eq!(
+        repo.rev_parse().arg_str("HEAD").execute().await.unwrap(),
+        source.rev_parse().arg_str("HEAD").execute().await.unwrap()
+    );
+    assert!(!path.join(".git").exists());
 }

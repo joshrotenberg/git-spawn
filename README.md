@@ -122,6 +122,27 @@ async fn demo() -> git_spawn::Result<()> {
 `.commit()`, `.log()`, ...) return commands pre-scoped to the repo's
 working directory.
 
+`Repository::open` accepts bare repositories as well as working trees.
+`git_dir()` returns the bare repository's path or the working tree's `.git`
+directory/file. For resolved directories, including linked worktrees, use
+`repo.rev_parse().absolute_git_common_dir()`.
+
+`repo.diff().has_changes().await?` interprets `git diff --quiet` as a predicate:
+exit 0 is unchanged, exit 1 is changed, and other statuses remain errors.
+Use `.cached()` for staged changes, revisions for committed changes, and
+`.path(...)` for a scope. Untracked files are not included.
+
+`RemoteCommand::get_url("origin")` reports effective URLs after Git applies
+`insteadOf` rewrites; `.push_url()` selects push URLs and `.all()` requests
+every URL. Explicit push leases use
+`repo.push().force_with_lease_for("refs/heads/main", Some(expected_oid))`;
+an empty expected string requires the remote ref to be absent. This models
+one typed lease; repeated raw leases remain available through `.arg(...)`.
+
+The push builder's `follow_tags` field now uses `Option<bool>` and
+`force_with_lease` uses `Option<PushForceWithLease>`. Use the builder methods
+to choose the desired mode when migrating public-field access.
+
 Accessors cover commands whose behavior depends on a repository or working
 tree. Standalone commands use their direct constructors instead:
 `VersionCommand` inspects the installed Git. Hybrid commands support both
