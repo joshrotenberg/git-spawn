@@ -29,7 +29,7 @@ async fn main() -> git_spawn::Result<()> {
 
 ```toml
 [dependencies]
-git-spawn = "0.3"
+git-spawn = "0.4"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
@@ -216,7 +216,7 @@ documents a nonzero status as ordinary control flow. It returns the captured
 stdout, stderr, and exact exit status for every normally completed process;
 spawn, I/O, and timeout failures remain errors.
 
-The following API changes are unreleased. When migrating code that reads output, `CommandOutput::stdout` and
+In 0.4, `CommandOutput::stdout` and
 `CommandOutput::stderr` are now raw `Vec<u8>` fields. Use `stdout_str()` or
 `stderr_str()` for an explicit lossy text view. `CommandOutput::status` records
 `ProcessStatus::Exited`, `Signaled`, or `Unknown`; `exit_code` remains available
@@ -230,13 +230,7 @@ use git_spawn::{GitCommand, Repository};
 
 async fn has_changes() -> git_spawn::Result<bool> {
     let repo = Repository::open("/path/to/repo")?;
-    let output = repo
-        .diff()
-        .args(["--quiet", "--exit-code"])
-        .execute_raw_unchecked()
-        .await?;
-
-    Ok(output.exit_code == 1)
+    repo.diff().has_changes().await
 }
 ```
 
@@ -247,7 +241,7 @@ common compositions:
 
 ```toml
 [dependencies]
-git-spawn = { version = "0.3", features = ["workflow"] }
+git-spawn = { version = "0.4", features = ["workflow"] }
 ```
 
 ```rust

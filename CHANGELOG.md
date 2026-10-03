@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `PushCommand::follow_tags` now uses `Option<bool>` and `force_with_lease`
+  uses `Option<PushForceWithLease>`; use builder methods to select the mode.
 - Preserve stdout and stderr bytes and process termination status in raw output
   and checked command failures. Stderr is now `Vec<u8>`; explicit text helpers
   provide lossy views.
